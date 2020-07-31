@@ -1,10 +1,10 @@
 <#
 	.Synopsis
-		 Create new WSL2 Ubuntu 20.04 LTS Instance  
+		 Deploy new WSL2 Linux system instance from specified image
     .Description
-		This script automates cloning Ubuntu 20.04 WSL2 instances
-		By this script, you can create fresh WSL2 instance without
-		Interaction with MS Windows Store
+		This script automates deployment of fresh WSL2 instances from
+		specified imege or exported backup. By this script is possible to
+		deploy fresh WSL2 instance without interaction with MS Windows Store
 
        		
 	.Parameter InstanceName    
@@ -16,17 +16,31 @@
 		
     .Parameter Destination    
         Folder where the vmdx file for the WSL2 instance will be created
-		If not specified, current directory will be used
-	
+		If not specified, current directory will be used. 
+		Mutual exclusive with DisksDir
+
+	.Parameter DisksDir
+		Folder where subdir with InstanceName will be created and where
+		WSL2 instance vmdx will be stored.
+		This parameter allows to organize WSL2 Instances disk inside 
+		this folder by this way
+		- DisksDir
+		   - Instance1\ext4.vhdx
+		   - Instance2\ext4.vhdx
+		   - .....
+		   - InstanceX\ext4.vhdx
+
 	.Parameter Image   
-        Path to image from which the instance will be cloned 
+		Path to image from which the instance will be cloned 
+		Mutual Exclusive with UbuntuImageDir
     
-	.Parameter ImageDir
-	    Path where the image will be downloaded if not exists
+	.Parameter UbuntuImageDir
+		Path where the Ubuntu 20.04 image will be downloaded if not exists
+		And then used for deplyment. Mutual Exclusive with Image parameter
 		
 	.Parameter ForceDownload
-		If specified, image will be re-dowloaded to ImageDir
-		If ImageDir is not pecified, paremeter is ignored
+		If specified, image will be re-dowloaded to UbuntuImageDir even if exists
+		If UbuntuImageDir is not pecified, parameter is ignored
     
 	.Example
         clone_ubuntu.ps1 Ubuntu22 c:\WSL2_Disks linux_user
@@ -35,7 +49,7 @@
 		c:\WSL2_disks folder and create new default user with name linux_user
 
     .Notes
-        NAME:      clone_ubuntu.ps1
+        NAME:      deploy-wsl2-image.ps1
         AUTHOR:    Zdenek Polach
 		WEBSITE:   https://polach.me
 #>
@@ -44,28 +58,64 @@
 param (
 	[Parameter(Mandatory)][string]$InstanceName,
     [Parameter(Mandatory)][string]$UserName,
-    [string]$Destination=".\",
+	[string]$Destination=".\",
+	[string]$DisksDir=".\",
 	[string]$Image,
-	[string]$ImageDir,
+	[string]$UbuntuImageDir,
 	[bool]$ForceDownload=$false
 )
-
-$image_url='https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64-wsl.rootfs.tar.gz'
-$image_name=Split-Path $image_url -Leaf
+$ubuntu_image_url='https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64-wsl.rootfs.tar.gz'
+$ubuntu_image_name=Split-Path $image_url -Leaf
 
 #Check if imagename is not duplicit
 $Instances = wsl --list --all
+
+$CreateDestDir=$false
 
 if ( $Instances.Contains( $InstanceName ) ){
     Write-Host "The instance ""$InstanceName"" already exists!! Unable to continue..." -foregroundcolor red
 	exit
 }
-#Destination folder have to be specified
-if ( -not (Test-Path -Path $Destination -PathType Container ) ){
-	Write-Host "Destination folder ""$Destination"" does not exist!! Unable to continue..." -foregroundcolor red
-	exit
+if ( $PSBoundParameters.ContainsKey('Destination') ){
+	if ( $PSBoundParameters.ContainsKey('DisksDir') ){
+		Write-Host "Is not possible to specify 'Destination' and 'DisksDir' parameters together." -foregroundcolor red
+		Write-Host "Unable to continue...."
+		exit
+	}
+	if ( -not (Test-Path -Path $Destination -PathType Container ) ){
+		Write-Host "Destination folder ""$Destination"" does not exist!! Unable to continue..." -foregroundcolor red
+		exit
+	}	
+} else {
+	if ( $PSBoundParameters.ContainsKey('DisksDir') ){
+		if ( -not (Test-Path -Path $DisksDir -PathType Container ) ){
+			Write-Host "DisksDir folder ""$DisksDir"" does not exist!! Unable to continue..." -foregroundcolor red
+			exit
+		}	
+		#We will deploy to the $InstanceName subdir.
+		$CreateDestDir=$true
+		$Destination = Join-Path $DisksDir $InstanceName
+
+	}
 }
-#now if image is pecified, it have to be file and will be used for clone
+#Handle the destination folder
+if ( Test-Path -Path $Destination -PathType Container  ){
+	$vhdx_check = Join-Path $Destination, 'ext4.vhdx'
+	if ( Test-Path -Path $vhdx_check -PathType Leaf  ){
+		Write-Host "VHDX disk image already exists in the ""$Destination"". Unable to continue..." -foregroundcolor red
+		exit
+	}
+}else{
+	if ( $CreateDestDir ){
+		#Try to create folder folder
+		New-Item -Path $DisksDir -Name $InstanceName -ItemType "directory"
+		if ( -not (Test-Path -Path $Destination -PathType Container ) ){
+			Write-Host "Can't create the folder ""$Destination"". Unable to continue..." -foregroundcolor red
+			exit
+		}
+	}
+}
+#now if image is specified, it have to be file and will be used for clone
 if ( -not $PSBoundParameters.ContainsKey('Image') ){
     if ( -not $PSBoundParameters.ContainsKey('ImageDir') ){
 	     Write-Host "No Image file nor Image file Dir is specified. Unable to continue" -foregroundcolor red
