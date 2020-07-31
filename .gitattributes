@@ -1,0 +1,2 @@
+ubuntu_root_bootstrap text eol=lf
+deploy-wsl2-image.ps1 text eol=crlf
