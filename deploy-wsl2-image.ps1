@@ -20,9 +20,9 @@
 		Mutual exclusive with DisksDir
 
 	.Parameter DisksDir
-		Folder where subdir with InstanceName will be created and where
-		WSL2 instance vmdx will be stored.
-		This parameter allows to organize WSL2 Instances disk inside 
+		Folder where subdir with InstanceName will be created to store
+		WSL2 instance ext4.vmdx virtual disk file.
+		This parameter allows to organize WSL2 Instances vhdx inside 
 		this folder by this way
 		- DisksDir
 		   - Instance1\ext4.vhdx
@@ -58,116 +58,164 @@
 param (
 	[Parameter(Mandatory)][string]$InstanceName,
     [Parameter(Mandatory)][string]$UserName,
-	[string]$Destination=".\",
-	[string]$DisksDir=".\",
+	[string]$Destination,
+	[string]$DisksDir,
 	[string]$Image,
 	[string]$UbuntuImageDir,
 	[bool]$ForceDownload=$false
 )
-$ubuntu_image_url='https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64-wsl.rootfs.tar.gz'
-$ubuntu_image_name=Split-Path $image_url -Leaf
+
+$ubuntu_image_url = 'https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64-wsl.rootfs.tar.gz'
+
+
+
+$CreateDestDir = $False
+
+$imageUrl = ""
+$imageDir = ""
+$DoDownload = $False
+$ByImageDir = $False
+
+function CheckMutualExclusiveParam {
+	param (
+		[string[]]$all_params_array,
+		[object] $where_to_find
+	)
+	$specified_params = @()
+	$all_params_array | ForEach-Object { if ( $where_to_find.ContainsKey( $_ ) ) { $specified_params += $_ } }
+	if ( $specified_params.Length -gt 1 ) {
+		$oval = ( $specified_params ) -join ", "
+		Write-Host "Is not possible to specify these parameters together: $oval" -foregroundcolor red
+		Write-Host "Please specify only one of them!"
+		return $False
+	}
+	if ( $specified_params.Length -lt 1 ){
+		$oval = ( $all_params_array ) -join ", "
+		Write-Host "Missing parameter. Please specify one of these parameters: $oval" -foregroundcolor red
+		return $False
+	}
+	return $True
+}
+
+function FinScript {
+	Write-Host "Unable to continue...."
+	exit
+}
+
+##
+########## main script #####################
+##
 
 #Check if imagename is not duplicit
 $Instances = wsl --list --all
-
-$CreateDestDir=$false
-
 if ( $Instances.Contains( $InstanceName ) ){
-    Write-Host "The instance ""$InstanceName"" already exists!! Unable to continue..." -foregroundcolor red
-	exit
+    Write-Host "The instance ""$InstanceName"" already exists!!" -foregroundcolor red
+	FinScript
 }
-if ( $PSBoundParameters.ContainsKey('Destination') ){
-	if ( $PSBoundParameters.ContainsKey('DisksDir') ){
-		Write-Host "Is not possible to specify 'Destination' and 'DisksDir' parameters together." -foregroundcolor red
-		Write-Host "Unable to continue...."
-		exit
-	}
-	if ( -not (Test-Path -Path $Destination -PathType Container ) ){
-		Write-Host "Destination folder ""$Destination"" does not exist!! Unable to continue..." -foregroundcolor red
-		exit
-	}	
-} else {
-	if ( $PSBoundParameters.ContainsKey('DisksDir') ){
-		if ( -not (Test-Path -Path $DisksDir -PathType Container ) ){
-			Write-Host "DisksDir folder ""$DisksDir"" does not exist!! Unable to continue..." -foregroundcolor red
-			exit
-		}	
-		#We will deploy to the $InstanceName subdir.
-		$CreateDestDir=$true
-		$Destination = Join-Path $DisksDir $InstanceName
+$dst_all_params_array = @('DisksDir', 'Destination')
+if ( -not ( CheckMutualExclusiveParam -all_params_array $dst_all_params_array -where_to_find $PSBoundParameters) ) {
+	FinScript
+}
 
+if ( $PSBoundParameters.ContainsKey('Destination') ){
+	if ( -not (Test-Path -Path $Destination -PathType Container ) ){
+		Write-Host "Destination folder ""$Destination"" does not exist!!" -foregroundcolor red
+		FinScript
+	}	
+} elseif ( $PSBoundParameters.ContainsKey('DisksDir') ){
+	if ( -not (Test-Path -Path $DisksDir -PathType Container ) ){
+		Write-Host "DisksDir folder ""$DisksDir"" does not exist!!" -foregroundcolor red
+		FinScript
+	}	
+	#We will deploy to the $InstanceName subdir.
+	$CreateDestDir=$true
+	$Destination = Join-Path $DisksDir $InstanceName
+	if ( -not (Test-Path -Path $Destination -PathType Container ) ){
+		$CreateDestDir=$true
 	}
 }
-#Handle the destination folder
-if ( Test-Path -Path $Destination -PathType Container  ){
-	$vhdx_check = Join-Path $Destination, 'ext4.vhdx'
-	if ( Test-Path -Path $vhdx_check -PathType Leaf  ){
-		Write-Host "VHDX disk image already exists in the ""$Destination"". Unable to continue..." -foregroundcolor red
-		exit
-	}
-}else{
-	if ( $CreateDestDir ){
-		#Try to create folder folder
-		New-Item -Path $DisksDir -Name $InstanceName -ItemType "directory"
-		if ( -not (Test-Path -Path $Destination -PathType Container ) ){
-			Write-Host "Can't create the folder ""$Destination"". Unable to continue..." -foregroundcolor red
-			exit
-		}
+
+#Handle the destination folder for vhdx
+$file_exists = Test-Path -Path $Destination -PathType Container  
+if ( $file_exists -eq $True ){
+	$vhdx_check = Join-Path -Path $Destination, -ChildPath "ext4.vhdx"
+	$file_exists = Test-Path -Path $vhdx_check -PathType Leaf
+	if ( $file_exists -eq $True ){
+		Write-Host "VHDX disk image already exists in the ""$Destination""." -foregroundcolor red
+		FinScript
 	}
 }
-#now if image is specified, it have to be file and will be used for clone
-if ( -not $PSBoundParameters.ContainsKey('Image') ){
-    if ( -not $PSBoundParameters.ContainsKey('ImageDir') ){
-	     Write-Host "No Image file nor Image file Dir is specified. Unable to continue" -foregroundcolor red
-		 Write-Host "Please specify full path to the image, or dir where image will be downloaded if not exits"
-		 exit
-	}else{
-		if ( -not (Test-Path -Path $ImageDir -PathType Container ) ){
-			Write-Host "ImageDir ""$ImageDir"" does not exist!! Unable to continue..." -foregroundcolor red
-			exit
-		}else{
-			$image_full_path = Join-Path $ImageDir $image_name
-			if ( Test-Path -Path $image_full_path -PathType Leaf ){
-				#image already exists
-				if ( $ForceDownload ) {
-					Write-Host "The Image file already exists inside the Image directory, but ForceDownload is requested"
-					Write-Host "Original image will be discarded and fresh new will be downloaded."
-					Remove-Item -Path $image_full_path -Force
-					$image_full_path=""
-				}else{
-					Write-Host "The Image file already exists inside the Image directory"
-					Write-Host "We will use this image for instance clone"
-				}
-			}else{
-				Write-Host "The Image file doesn't exist inside the Image directory"
-				Write-Host "We will try to download the image..."
-				$image_full_path=""
-			}
-		}
-	}
-}else{
+
+#Now image options
+$img_all_params_array = @('Image', 'UbuntuImageDir')
+if ( -not ( CheckMutualExclusiveParam -all_params_array $img_all_params_array  -where_to_find $PSBoundParameters) ) {
+	FinScript
+}
+
+#now if image is specified, it have to be file....
+if ( $PSBoundParameters.ContainsKey('Image') ){
 	if ( -not (Test-Path -Path $Image -PathType Leaf) ){
-		Write-Host "Specified Image ""$Image"" does not exist!! Unable to continue..." -foregroundcolor red
-	    exit
+		Write-Host "Specified Image ""$Image"" does not exist!!" -foregroundcolor red
+	    FinScript
 	}else{
 		$image_full_path=$Image
+		$image_name = Split-Path $image_full_path -Leaf
+	}
+}elseif ( $PSBoundParameters.ContainsKey('UbuntuImageDir') ){    
+	$imageUrl = $ubuntu_image_url
+	$imageDir = $UbuntuImageDir
+	$ByImageDir = $True
+	$image_full_path = ""
+}
+#elseif (in future ....another image option....) 
+
+if ($ByImageDir){
+	if ( -not (Test-Path -Path $ImageDir -PathType Container -ErrorAction Stop) ){
+		Write-Host "ImageDir ""$ImageDir"" does not exist!!" -foregroundcolor red
+		FinScript
+	}
+	$image_name = Split-Path $imageUrl -Leaf
+	$image_full_path = Join-Path $ImageDir $image_name
+	$file_exists = Test-Path -Path $image_full_path -PathType Leaf 
+	if ($file_exists -eq $True ){
+		#image already exists
+		if ( $ForceDownload ) {
+			Write-Host "The Image file ""$image_name"" already exists inside the Image directory, but ForceDownload is requested"
+			Write-Host "Original image will be discarded and fresh new will be downloaded."
+			Remove-Item -Path $image_full_path -Force
+			$DoDownload = $True
+		}else{
+			Write-Host "The Image file already exists inside the Image directory"
+			Write-Host "We will use this image for instance clone"
+			$DoDownload = $False
+		}
+	}else{
+		Write-Host "The Image file doesn't exist inside the Image directory"
+		Write-Host "We will try to download the image..."
+		$DoDownload = $True
 	}
 }
-if( $image_full_path -eq "" ) {
-	$image_name=Split-Path $image_url -Leaf
-	$image_full_path = Join-Path $ImageDir $image_name
+
+if( $DoDownload ) {
 	Write-Host "Downloading image:"
-	Write-Host "   ""$image_url""..."
-	Invoke-WebRequest -Uri $image_url -OutFile $image_full_path -UseBasicParsing
+	Write-Host "   ""$imageUrl""..."
+	Invoke-WebRequest -Uri $imageUrl -OutFile $image_full_path -UseBasicParsing
 	if ( -not (Test-Path -Path $image_full_path -PathType Leaf -ErrorAction Stop) ){
-	   Write-Host "Image download failed... Unable to Continue" -foregroundcolor red
-	   exit
+	   Write-Host "Image download failed!" -foregroundcolor red
+	   FinScript
 	}else{
 		Write-Host "Image downloaded successfuly."
 	}
 }
 #now all pieces are in place
-$image_name=Split-Path $image_full_path -Leaf
+if ( $CreateDestDir ){
+	#Try to create folder folder
+	New-Item -Path $DisksDir -Name $InstanceName -ItemType "directory"
+	if ( -not (Test-Path -Path $Destination -PathType Container ) ){
+		Write-Host "Can't create the folder ""$Destination""!" -foregroundcolor red
+		FinScript
+	}
+}
 Write-Host "Going to create ""$InstanceName"" from image ""$image_name"" to ""$Destination"""
 wsl --import $InstanceName $Destination $image_full_path
 Write-Host "The WSL Instance ""$InstanceName"" has been created successfuly"
