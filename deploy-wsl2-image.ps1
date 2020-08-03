@@ -6,6 +6,10 @@
 		specified imege or exported backup. By this script is possible to
 		deploy fresh WSL2 instance without interaction with MS Windows Store
 
+		Script also allows bootstrapping of the deployed image by
+		specified scripts. These bootstap scripts can be run as
+		root, normal user or both and by this mechanism is possible
+		to  customise image automatically.
        		
 	.Parameter InstanceName    
         Specifies the name of the new WSL2 Linux instance
@@ -41,12 +45,26 @@
 	.Parameter ForceDownload
 		If specified, image will be re-dowloaded to UbuntuImageDir even if exists
 		If UbuntuImageDir is not pecified, parameter is ignored
-    
-	.Example
-        clone_ubuntu.ps1 Ubuntu22 c:\WSL2_Disks linux_user
+	
+	.Parameter BootstrapRootScript
+		If specified, script copies this file inside the new fresh image and run
+		it inside the shell as root user. It allows to provide necessary modifications
+		to deployed image as install required software packages, update image
+		by package manager to latest versions etc...
 		
-		Creates Ubuntu instance with name Ubuntu22, store disk in 
-		c:\WSL2_disks folder and create new default user with name linux_user
+
+	.Parameter BootstrapUserScript
+		If specified, script copies this file inside the new fresh image and run
+		it inside the shell as user specified by UserName parameter.
+		It allows to provide necessary modifications to deployed image 
+		for the user account, as copied dot files and other configs, etc...
+
+	.Example
+        deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz
+		
+		Deploy WSL instance with name Ubuntu22, store disk in 
+		e:\WSL\Disks and create new default user with name linux_user
+		As source use image E:\WSL\Ubu.tar.gz
 
     .Notes
         NAME:      deploy-wsl2-image.ps1
