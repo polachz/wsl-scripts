@@ -17,7 +17,7 @@ deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\U
 ###### Parameters:
 
 * **InstanceName** (Mandatory) - Name of the WSL Instance. Can be specified also as the first positional parameter of the script. Must be unique and Windows WSL will use this name to identify the instance. If instance with same name already exists, script generates error and fail. I
-* **UserName** (Mandatory) - Name of the user account to be created at the WSL Instance. Can be specified also as the second positional parameter of the script.
+* **UserName** - Name of the user account to be created at the WSL Instance. Can be specified also as the second positional parameter of the script. if user already exists inside the WSL instance then creating and bootstrapping for the user is skipped.
 * **Destination** (Mutual exclusive with _DisksDir_) - Folder where the vmdx file for the WSL2 instance will be created. The ext4.vhdx file can't exist in the folder. otherwise the script generates error and stop.
 * **DisksDir** (Mutual exclusive with _Destination_) - Folder where subdir with _InstanceName_ will be created to store WSL2 Instance ext4.vmdx virtual disk file.
 		This parameter allows to organize WSL2 Instances vhdx inside this folder by this way:
