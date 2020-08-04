@@ -5,7 +5,7 @@ Various scripts to make life with WSL easier
 
 ### Deploy Script
 
-This script automates deployment of fresh WSL2 instances from specified imege or exported backup. By this script is possible to deploy fresh WSL2 instance without interaction with MS Windows Store.
+This script automates deployment of fresh WSL2 instances from specified image or exported backup. By this script is possible to deploy fresh WSL2 instance without interaction with MS Windows Store. For Ubuntu 20.04 is supported automatic image download from Ubuntu servers, then deployment is as easy as possible (see UbuntuImageDir parameter)
 Script also allows bootstrapping of the deployed image by specified scripts. These bootstap scripts can be run as root, normal user or both and by this mechanism is possible to  customise image automatically.
 
 ##### Usage:
