@@ -74,7 +74,7 @@
 [CmdletBinding(SupportsShouldProcess=$True)]
 param (
 	[Parameter(Mandatory)][string]$InstanceName,
-    [Parameter][string]$UserName,
+    [string]$UserName,
 	[string]$Destination,
 	[string]$DisksDir,
 	[string]$Image,
@@ -131,7 +131,7 @@ function FinScript {
 function CopyBootstrapAndRun {
 	param (
 		[string]$bootstrap_file,
-		[object] $user_name='root'
+		[string]$user_name='root'
 	)
 	$pure_file_name = Split-Path $bootstrap_file -Leaf
 	#Build path as will be used on WSL
@@ -160,6 +160,15 @@ function CopyBootstrapAndRun {
 	wsl -d $InstanceName -u $user_name chmod 740 $wsl_dest_file
 	#execute the file
 	wsl -d $InstanceName -u $user_name sh -c  $wsl_dest_file
+}
+
+function CheckIfLinuxUserExists {
+	param (
+		[string] $user_name
+	)	
+	$test_output = wsl -d $InstanceName id -u $user_name 2>&1 
+	$user_exists = -not ( $test_output -match 'no such user' )
+	return $user_exists
 }
 ##
 ########## main script #####################
@@ -345,7 +354,7 @@ if ( $PSBoundParameters.ContainsKey('BootstrapUserScript') ){
 if ( $CreateDestDir ){
 	#Try to create folder folder
 	if ( -not (Test-Path -Path $Destination -PathType Container ) ){
-		New-Item -Path $DisksDir -Name $InstanceName -ItemType "directory"
+		New-Item -Path $DisksDir -Name $InstanceName -ItemType "directory"  -ErrorAction Stop | Out-Null
 		if ( -not (Test-Path -Path $Destination -PathType Container ) ){
 			Write-Host "Can't create the folder ""$Destination""!" -foregroundcolor red
 			FinScript
@@ -366,15 +375,19 @@ if ($BootstrapRootScript){
 }
 #Own exports often contains users -> then no longer UserName parameter is mandatory
 if ( $PSBoundParameters.ContainsKey('UserName') ){
-	Write-Host "Creating default user: ""$UserName"""
-	$default_cnt="echo default=""$UserName"" >> /etc/wsl.conf"
-	wsl -d $InstanceName -e sh -c "echo '[user]' > /etc/wsl.conf"
-	wsl -d $InstanceName -e sh -c """$default_cnt"""
-	wsl -d $InstanceName adduser --gecos $UserName $UserName '&&' adduser $UserName sudo
-	if ($BootstrapUserScript){
-		Write-Host "Providing ""$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance..."
-		CopyBootstrapAndRun $BootstrapUserScript -user_name $UserName
-		Write-Host """$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
+	if( CheckIfLinuxUserExists -user_name $UserName ) {
+		Write-Host "WARNING: The Linux user ""$UserName"" already exists. Skipping actions for the user...." -ForegroundColor Yellow
+	} else{
+		Write-Host "Creating default user: ""$UserName"""
+		$default_cnt="echo default=""$UserName"" >> /etc/wsl.conf"
+		wsl -d $InstanceName -e sh -c "echo '[user]' > /etc/wsl.conf"
+		wsl -d $InstanceName -e sh -c """$default_cnt"""
+		wsl -d $InstanceName adduser --gecos $UserName $UserName '&&' adduser $UserName sudo
+		if ($BootstrapUserScript){
+			Write-Host "Providing ""$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance..."
+			CopyBootstrapAndRun $BootstrapUserScript -user_name $UserName
+			Write-Host """$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
+		}
 	}
 }
 wsl --terminate Ubut1
