@@ -47,7 +47,7 @@ The Bootstrap script can be specified by three ways
 
 1. Can be placed to same folder as image and have to have specific filename:
    * **root_bootstrap** For bootstrap script run as root 
-   * **user_bootstrap** For bootstrap script run as user with name specified by UserName mandatory parameter
+   * **user_bootstrap** For bootstrap script run as user with name specified by UserName parameter
    
    Then it's connected with the image and is used always when the image is deployed
    
