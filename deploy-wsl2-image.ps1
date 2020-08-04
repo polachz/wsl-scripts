@@ -12,15 +12,14 @@
 		to  customise image automatically.
        		
 	.Parameter InstanceName    
-        Specifies the name of the new WSL2 Linux instance
+        Specifies the name of the new WSL2 Linux instance. Must be unique.
 	
 	.Parameter UserName
-	    Username of user account to create insid the wsl2 Linux instance. 
-		Sudo will be also allowes for the user
+	    Username of user account to create inside the wsl2 Linux instance. 
+		Sudo will be also allowed for the user
 		
     .Parameter Destination    
-        Folder where the vmdx file for the WSL2 instance will be created
-		If not specified, current directory will be used. 
+        Folder where the vmdx file for the WSL2 instance will be created.
 		Mutual exclusive with DisksDir
 
 	.Parameter DisksDir
@@ -47,10 +46,10 @@
 		If UbuntuImageDir is not pecified, parameter is ignored
 	
 	.Parameter BootstrapRootScript
-		If specified, script copies this file inside the new fresh image and run
-		it inside the shell as root user. It allows to provide necessary modifications
-		to deployed image as install required software packages, update image
-		by package manager to latest versions etc...
+		If specified then the file is copied to /root folder inside the new fresh 
+		image and run as shell script under the root user account.
+		It allows to provide necessary modifications to deployed image as install
+		required software packages, update image by package manager to latest versions etc...
 		
 
 	.Parameter BootstrapUserScript
@@ -75,7 +74,7 @@
 [CmdletBinding(SupportsShouldProcess=$True)]
 param (
 	[Parameter(Mandatory)][string]$InstanceName,
-    [Parameter(Mandatory)][string]$UserName,
+    [Parameter][string]$UserName,
 	[string]$Destination,
 	[string]$DisksDir,
 	[string]$Image,
@@ -132,14 +131,14 @@ function FinScript {
 function CopyBootstrapAndRun {
 	param (
 		[string]$bootstrap_file,
-		[object] $userName='root'
+		[object] $user_name='root'
 	)
 	$pure_file_name = Split-Path $bootstrap_file -Leaf
 	#Build path as will be used on WSL
-	if($userName -eq "root"){
+	if($user_name -eq "root"){
 		$wsl_dest_file= '/root/' + $pure_file_name
 	}else{
-		$wsl_dest_file= '/home/'+$userName
+		$wsl_dest_file= '/home/'+$user_name
 		$wsl_dest_file+='/'
 		$wsl_dest_file+=$pure_file_name
 	}
@@ -156,11 +155,11 @@ function CopyBootstrapAndRun {
 	$mnt_file_path = $mnt_file_path -Replace  ":", "" 
 	$mnt_file_path = "'/mnt/" + $mnt_file_path +"'"
 	#copy file
-	wsl -d $InstanceName -u $userName cp $mnt_file_path $wsl_dest_file
+	wsl -d $InstanceName -u $user_name cp $mnt_file_path $wsl_dest_file
 	#change rights
-	wsl -d $InstanceName -u $userName chmod 740 $wsl_dest_file
+	wsl -d $InstanceName -u $user_name chmod 740 $wsl_dest_file
 	#execute the file
-	wsl -d $InstanceName -u $userName sh -c  $wsl_dest_file
+	wsl -d $InstanceName -u $user_name sh -c  $wsl_dest_file
 }
 ##
 ########## main script #####################
@@ -357,8 +356,7 @@ if ( $CreateDestDir ){
 Write-Host "Going to create ""$InstanceName"" from image ""$image_name"" to ""$Destination"""
 wsl --import $InstanceName $Destination $image_full_path
 Write-Host "The WSL Instance ""$InstanceName"" has been created successfuly"
-#Write-Host "Updating the instance to latest packages..."
-#wsl -d $InstanceName apt-get update '&&' apt-get -y upgrade
+
 #start the instance to allow next processing
 wsl -d $InstanceName echo "Starting WSL $InstanceName.."
 if ($BootstrapRootScript){
@@ -366,19 +364,18 @@ if ($BootstrapRootScript){
 	CopyBootstrapAndRun $BootstrapRootScript
 	Write-Host "Root user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
 }
-#bootstraping
-#cp .\clone_ubuntu.ps1 \\wsl$\$InstanceName\root\
-#wsl -d $InstanceName -e sh -c "/root/bootstrap_root.sh"
-
-Write-Host "Creating default user: ""$UserName"""
-$default_cnt="echo default=""$UserName"" >> /etc/wsl.conf"
-wsl -d $InstanceName -e sh -c "echo '[user]' > /etc/wsl.conf"
-wsl -d $InstanceName -e sh -c """$default_cnt"""
-wsl -d $InstanceName adduser --gecos $UserName $UserName '&&' adduser $UserName sudo
-if ($BootstrapUserScriptScript){
-	Write-Host "Providing ""$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance..."
-	CopyBootstrapAndRun $BootstrapUserScriptScript -userName $UserName
-	Write-Host """$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
+#Own exports often contains users -> then no longer UserName parameter is mandatory
+if ( $PSBoundParameters.ContainsKey('UserName') ){
+	Write-Host "Creating default user: ""$UserName"""
+	$default_cnt="echo default=""$UserName"" >> /etc/wsl.conf"
+	wsl -d $InstanceName -e sh -c "echo '[user]' > /etc/wsl.conf"
+	wsl -d $InstanceName -e sh -c """$default_cnt"""
+	wsl -d $InstanceName adduser --gecos $UserName $UserName '&&' adduser $UserName sudo
+	if ($BootstrapUserScript){
+		Write-Host "Providing ""$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance..."
+		CopyBootstrapAndRun $BootstrapUserScript -user_name $UserName
+		Write-Host """$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
+	}
 }
 wsl --terminate Ubut1
 Write-Host "Done. Instance ""$InstanceName"" has been created successfuly"
