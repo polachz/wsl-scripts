@@ -231,6 +231,17 @@ function CheckIfLinuxFileOnPathExists {
 	return $file_exists
 }
 
+function CheckIfLinuxDirectoryOnPathExists {
+    param (
+        [string] $instanceName,
+		[string] $dirPath
+    )
+    $script = "[ -d '$dirPath' ] && echo exists"
+    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script" 
+    $dir_exists = $test_output -match "exists" 
+	return $dir_exists
+}
+
 function CheckIfLinuxGroupExists {
     param (
         [string] $instanceName,
@@ -348,7 +359,9 @@ function CreateLinuxUser {
 		}
 	}
 	if(($manager -eq [PackageManagers]::dnf)-or ($manager -eq [PackageManagers]::yum)){
-		wsl -d $instanceName -u 'root' dnf -y install 'cracklib-dicts'
+		if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/share/cracklib/pw_dict.pwd') ){
+			wsl -d $instanceName -u 'root' dnf -y install 'cracklib-dicts'
+		}
     }
     
 	if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/sudo') ){
