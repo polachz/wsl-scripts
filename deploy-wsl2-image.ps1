@@ -375,9 +375,9 @@ function CreateLinuxUser {
 	Write-Host "The default user: ""$userName"" created successfully" -ForegroundColor Green
 
 	if ($BootstrapUserScript){
-		Write-Host "Providing ""$userName""" user bootstrapping in the ""$InstanceName"" wsl instance..."
+		Write-Host "Providing ""$userName"" user bootstrapping in the ""$InstanceName"" wsl instance..." -ForegroundColor Blue
 		CopyBootstrapAndRun -instanceName $instanceName -bootstrapFile $BootstrapUserScript -userName $userName
-		Write-Host """$userName""" user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
+		Write-Host """$userName"" user bootstrapping in the ""$InstanceName"" wsl instance has been finished" -ForegroundColor Green
 	}
 }
 ##
@@ -511,14 +511,14 @@ if ( $PSBoundParameters.ContainsKey('BootstrapRootScript') ){
 	$possible_script = Join-Path  -Path $imageDir -ChildPath $default_root_bootstrap_script_name
 	$file_exists = Test-Path -Path $possible_script -PathType Leaf 
 	if ($file_exists -eq $True ){
-		Write-Host "Root Bootstrap script has been detected at Image Folder"
+		Write-Host "Root Bootstrap script has been detected at Image Folder" -ForegroundColor Yellow
 		$BootstrapRootScript = $possible_script
 	}else{
 		#Try if default bootstrapping is not deployed with this script for the image
 		if (-not ( [string]::IsNullOrEmpty( $image_root_bootstrap ))){
 			$file_exists = Test-Path -Path $image_root_bootstrap -PathType Leaf 
 			if ($file_exists -eq $True ){
-				Write-Host "Default image root user bootstrapping script has been detected at script folder"
+				Write-Host "Default image root user bootstrapping script has been detected at script folder" -ForegroundColor Yellow
 				$BootstrapRootScript = $image_root_bootstrap
 			}else{
 				$BootstrapRootScript = ""	
@@ -526,9 +526,6 @@ if ( $PSBoundParameters.ContainsKey('BootstrapRootScript') ){
 		}else{
 			$BootstrapRootScript = ""
 		}
-	
-		
-		
 	}
 }
 if ( $PSBoundParameters.ContainsKey('BootstrapUserScript') ){
@@ -541,14 +538,14 @@ if ( $PSBoundParameters.ContainsKey('BootstrapUserScript') ){
 	$possible_script = Join-Path  -Path $imageDir -ChildPath $default_user_bootstrap_script_name
 	$file_exists = Test-Path -Path $possible_script -PathType Leaf 
 	if ($file_exists -eq $True ){
-		Write-Host "User Bootstrap script has been detected at Image Folder"
+		Write-Host "User Bootstrap script has been detected at Image Folder" -ForegroundColor Yellow
 		$BootstrapUserScript = $possible_script
 	}else{
 		#Try if default bootstrapping is not deployed with thi script for the image
 		if (-not ( [string]::IsNullOrEmpty( $image_user_bootstrap ))){
 			$file_exists = Test-Path -Path $image_user_bootstrap -PathType Leaf 
 			if ($file_exists -eq $True ){
-				Write-Host "Default image user bootstrapping script has been detected at script folder"
+				Write-Host "Default image user bootstrapping script has been detected at script folder" -ForegroundColor Yellow
 				$BootstrapUserScript = $image_user_bootstrap
 			}else{
 				$BootstrapUserScript = ""		
@@ -582,7 +579,7 @@ $package_manager = DetectPackageManager -instanceName $InstanceName
 UpdateImageToLatestPackages -instanceName $InstanceName -manager $package_manager
 if ($BootstrapRootScript){
 	Write-Host "Providing root user bootstrapping in the ""$InstanceName"" wsl instance..." -ForegroundColor Blue
-	#CopyBootstrapAndRun -instanceName $instanceName -bootstrapFile $BootstrapRootScript
+	CopyBootstrapAndRun -instanceName $instanceName -bootstrapFile $BootstrapRootScript
 	Write-Host "Root user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
 }
 #Own exports often contains users -> then no longer UserName parameter is mandatory
