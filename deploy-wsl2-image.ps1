@@ -347,6 +347,10 @@ function CreateLinuxUser {
 			return $False
 		}
 	}
+	if(($manager -eq [PackageManagers]::dnf)-or ($manager -eq [PackageManagers]::yum)){
+		wsl -d $instanceName -u 'root' dnf -y install 'cracklib-dicts'
+    }
+    
 	if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/sudo') ){
 		InstallPackageToWSL -instanceName $instanceName -manager $manager -packageName 'sudo'
 		if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/sudo') ){
