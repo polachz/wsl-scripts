@@ -102,6 +102,16 @@ $ByImageDir = $False
 $image_root_bootstrap=""
 $image_user_bootstrap=""
 
+enum PackageManagers
+{
+	apt
+	dnf
+	yum
+	unknown
+}
+
+$package_manager = [PackageManagers]::unknown
+
 function CheckMutualExclusiveParam {
 	param (
 		[string[]]$all_params_array,
@@ -128,24 +138,25 @@ function FinScript {
 	exit
 }
 
-function CopyBootstrapAndRun {
-	param (
-		[string]$bootstrap_file,
-		[string]$user_name='root'
-	)
-	$pure_file_name = Split-Path $bootstrap_file -Leaf
-	#Build path as will be used on WSL
-	if($user_name -eq "root"){
-		$wsl_dest_file= '/root/' + $pure_file_name
-	}else{
-		$wsl_dest_file= '/home/'+$user_name
-		$wsl_dest_file+='/'
-		$wsl_dest_file+=$pure_file_name
+function CopyFileFromWinToWSL {
+    param (
+        [string] $instanceName,
+        [string] $winFilePath,
+        [string] $wslFilePath,
+        [string] $userName='root',
+        [string] $linuxRights='640'
+    )
+    if ( -not (Test-Path -Path $winFilePath -PathType Leaf -ErrorAction SilentlyContinue) ){
+		Write-Host "The WinFile ""$winFilePath"" doesn't exist. Can't be copied to WSL" -foregroundcolor red
+		return $False
 	}
-	#to make copy successfull, we have to use
+    $temp_file = New-TemporaryFile
+    #to be sure that file is on WSL mapped disk, use temp file in temp folder
+    Copy-Item $winFilePath -Destination $temp_file
+    #to make copy successfull, we have to use
 	#mounted windows disk as source, aka:
 	#/mnt/c/Windows..... 
-	$mnt_file_path = $bootstrap_file
+	$mnt_file_path = $temp_file.FullName
 	$disk_char = $mnt_file_path.Substring(0,1)
 	$disk_char = $disk_char.ToLower()
 	$mnt_file_path = $mnt_file_path.Substring(1)
@@ -155,20 +166,215 @@ function CopyBootstrapAndRun {
 	$mnt_file_path = $mnt_file_path -Replace  ":", "" 
 	$mnt_file_path = "'/mnt/" + $mnt_file_path +"'"
 	#copy file
-	wsl -d $InstanceName -u $user_name cp $mnt_file_path $wsl_dest_file
-	#change rights
-	wsl -d $InstanceName -u $user_name chmod 740 $wsl_dest_file
+    wsl -d $instanceName -u $userName cp $mnt_file_path $wslFilePath
+    Remove-Item $temp_file
+    if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath $wslFilePath) ){
+        Write-Host "Copy to the file ""$wslFilePath"" failed." -ForegroundColor Red
+        return $False
+    }
+    #change rights
+    #$script = "chmod $linuxRights $wslFilePath"
+    #wsl -d $instanceName -u $userName -e sh -c "$script"
+	wsl -d $instanceName -u $userName chmod $linuxRights $wslFilePath
+    return $True
+}
+function CopyBootstrapAndRun {
+	param (
+		[string] $instanceName,
+		[string] $bootstrapFile,
+		[string] $userName='root'
+	)
+	$pure_file_name = Split-Path $bootstrapfile -Leaf
+	#Build path as will be used on WSL
+	if($userName -eq "root"){
+		$wsl_dest_file= '/root/' + $pure_file_name
+	}else{
+		$wsl_dest_file= '/home/'+$userName
+		$wsl_dest_file+='/'
+		$wsl_dest_file+=$pure_file_name
+	}
+	$copied = CopyFileFromWinToWSL -instanceName $instanceName -winFilePath $bootstrapFile `
+		-wslFilePath $wsl_dest_file -userName $userName -linuxRights '740'
 	#execute the file
-	wsl -d $InstanceName -u $user_name sh -c  $wsl_dest_file
+	if ($copied -eq $True) {
+		wsl -d $instanceName -u $userName sh -c  $wsl_dest_file
+	}
 }
 
 function CheckIfLinuxUserExists {
 	param (
-		[string] $user_name
+		[string] $instanceName,
+		[string] $userName
 	)	
-	$test_output = wsl -d $InstanceName id -u $user_name 2>&1 
+	$test_output = wsl -d $instanceName id -u $userName 2>&1 
 	$user_exists = -not ( $test_output -match 'no such user' )
 	return $user_exists
+}
+
+function CheckIfLinuxBinaryExists {
+	param (
+        [string] $instanceName,
+		[string] $binaryName
+	)	
+    $test_output = wsl -d $instanceName -u "root" whereis -b $binaryName 2>&1 
+    $exe_exists = $test_output -match "/$binaryName" 
+	return $exe_exists
+}
+function CheckIfLinuxFileOnPathExists {
+    param (
+        [string] $instanceName,
+		[string] $filePath
+    )
+    $script = "[ -f '$filePath' ] && echo exists"
+    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script" 
+    $file_exists = $test_output -match "exists" 
+	return $file_exists
+}
+
+function CheckIfLinuxGroupExists {
+    param (
+        [string] $instanceName,
+		[string] $group
+    )
+    $script = "cat /etc/group | grep $group"
+    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script" 
+    $group_exists = $test_output -match "$group" 
+	return $group_exists
+}
+function DetectPackageManager {
+    param (
+        [string] $instanceName
+	)
+    if( CheckIfLinuxBinaryExists -instanceName $instanceName -binaryName 'dnf' ) {
+        return [PackageManagers]::dnf
+    }
+    if( CheckIfLinuxBinaryExists -instanceName $instanceName -binaryName 'apt-get' ) {
+        return [PackageManagers]::apt
+    }
+    if( CheckIfLinuxBinaryExists -instanceName $instanceName -binaryName 'yum' ) {
+        return [PackageManagers]::yum
+    }
+    return [PackageManagers]::unknown
+}
+
+function UpdateImageToLatestPackages {
+    param (
+        [string] $instanceName,
+        [PackageManagers] $manager
+    )
+    Write-Host "Updating the ""$instanceName"" instance to latest packages..." -ForegroundColor Blue
+    switch($manager)
+    {
+        apt {
+			wsl -d $instanceName -u 'root' -e sh -c "apt-get -y update && apt-get -y upgrade"
+        }
+        dnf {
+			wsl -d $instanceName -u 'root' dnf -y update
+        }
+        yum {
+			wsl -d $instanceName -u 'root' yum -y update
+        }
+        unknown {
+            Write-Host "Unknown package manager. Unable to update the ""$instanceName"" to latest packages" -ForegroundColor Red
+        }
+	}
+	Write-Host "The ""$instanceName"" has been updated successfully." -ForegroundColor Green
+}
+function InstallPackageToWSL {
+    param (
+        [string] $instanceName,
+        [PackageManagers] $manager,
+        [string] $packageName
+    )
+    
+    switch($manager)
+    {
+        apt {
+			Write-Host "Installing the ""$packageName"" by apt-get" -ForegroundColor Blue
+			wsl -d $instanceName -u 'root' apt-get -y install $packageName
+        }
+        dnf {
+			Write-Host "Installing the ""$packageName"" by dnf" -ForegroundColor Blue
+			wsl -d $instanceName -u 'root' dnf -y install $packageName
+        }
+        yum {
+			Write-Host "Installing the ""$packageName"" by yum" -ForegroundColor Blue
+			wsl -d $instanceName -u 'root' yum -y install $packageName
+        }
+        unknown {
+            Write-Host "Unknown package manager. Unable to install ""$packageName""." -ForegroundColor Red
+        }
+    }
+}
+function AllowSudoForUSer {
+	param (
+        [string] $instanceName,
+        [string] $userName
+	)
+	if( CheckIfLinuxGroupExists -instanceName $instanceName -group 'wheel' ) {
+		Write-Host "Adding user ""$userName"" to the ""wheel"" group..." -ForegroundColor Blue
+		wsl -d $instanceName -u 'root' -e sh -c "usermod -aG wheel $userName"
+		return
+	}
+	if( CheckIfLinuxGroupExists -instanceName $instanceName -group 'sudo' ) {
+		Write-Host "Adding user ""$userName"" to the ""sudo"" group..." -ForegroundColor Blue
+		wsl -d $instanceName -u 'root' -e sh -c "usermod -aG sudo $userName"
+		return
+	}
+	Write-Host "No ""sudo"" or ""wheel"" group detected. Unable to allow sudo for user ""$userName""" -ForegroundColor Yellow
+
+}
+function CreateLinuxUser {
+	param (
+        [string] $instanceName,
+        [PackageManagers] $manager,
+        [string] $userName
+	)
+	
+	if( CheckIfLinuxUserExists -instanceName $instanceName -userName $userName ) {
+		Write-Host "WARNING: The Linux user ""$userName"" already exists. Skipping actions for the user...." -ForegroundColor Yellow
+		return $False
+	}
+	Write-Host "Creating default user: ""$userName""" -ForegroundColor Blue
+	if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/bin/bash') ){
+		Write-Host "The Bash package is missing. User ""$userName"" can't be created." -ForegroundColor Red
+		return $False
+	}
+	if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/passwd') ){
+		InstallPackageToWSL -instanceName $instanceName -manager $manager -packageName 'passwd'
+		if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/passwd') ){
+			Write-Host "Unable to install missing passwd package. User ""$userName"" can't be created." -ForegroundColor Red
+			return $False
+		}
+	}
+	if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/sudo') ){
+		InstallPackageToWSL -instanceName $instanceName -manager $manager -packageName 'sudo'
+		if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/sudo') ){
+			Write-Host "Unable to install missing sudo package. User ""$userName"" can't be created." -ForegroundColor Red
+			return $False
+		}
+	}
+	wsl -d $InstanceName -e sh -c "useradd -m -s /bin/bash $userName"
+	
+	if( -not (CheckIfLinuxUserExists -instanceName $InstanceName -userName $userName) ) {
+		Write-Host "The default user: ""$userName"" was not created!" -ForegroundColor Red
+		return $False
+	}
+	Write-Host "Creating password for user ""$userName""..." -ForegroundColor Blue
+	wsl -d $InstanceName -e sh -c "passwd $userName"
+	AllowSudoForUSer -instanceName $instanceName -userName $userName
+	#create wsl.conf file
+	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
+	$default_cnt="echo default=""$userName"" >> /etc/wsl.conf"
+	wsl -d $InstanceName -e sh -c "echo '[user]' > /etc/wsl.conf"
+	wsl -d $InstanceName -e sh -c """$default_cnt"""
+	Write-Host "The default user: ""$userName"" created successfully" -ForegroundColor Green
+
+	if ($BootstrapUserScript){
+		Write-Host "Providing ""$userName""" user bootstrapping in the ""$InstanceName"" wsl instance..."
+		CopyBootstrapAndRun -instanceName $instanceName -bootstrapFile $BootstrapUserScript -userName $userName
+		Write-Host """$userName""" user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
+	}
 }
 ##
 ########## main script #####################
@@ -206,7 +412,7 @@ if ( $PSBoundParameters.ContainsKey('Destination') ){
 #Handle the destination folder for vhdx
 $file_exists = Test-Path -Path $Destination -PathType Container  
 if ( $file_exists -eq $True ){
-	$vhdx_check = Join-Path -Path $Destination, -ChildPath "ext4.vhdx"
+	$vhdx_check = Join-Path -Path $Destination -ChildPath "ext4.vhdx"
 	$file_exists = Test-Path -Path $vhdx_check -PathType Leaf
 	if ( $file_exists -eq $True ){
 		Write-Host "VHDX disk image already exists in the ""$Destination""." -foregroundcolor red
@@ -304,7 +510,7 @@ if ( $PSBoundParameters.ContainsKey('BootstrapRootScript') ){
 		Write-Host "Root Bootstrap script has been detected at Image Folder"
 		$BootstrapRootScript = $possible_script
 	}else{
-		#Try if default bootstrapping is not deployed with thi script for the image
+		#Try if default bootstrapping is not deployed with this script for the image
 		if (-not ( [string]::IsNullOrEmpty( $image_root_bootstrap ))){
 			$file_exists = Test-Path -Path $image_root_bootstrap -PathType Leaf 
 			if ($file_exists -eq $True ){
@@ -368,29 +574,22 @@ Write-Host "The WSL Instance ""$InstanceName"" has been created successfuly"
 
 #start the instance to allow next processing
 wsl -d $InstanceName echo "Starting WSL $InstanceName.."
+$package_manager = DetectPackageManager -instanceName $InstanceName
+UpdateImageToLatestPackages -instanceName $InstanceName -manager $package_manager
 if ($BootstrapRootScript){
-	Write-Host "Providing root user bootstrapping in the ""$InstanceName"" wsl instance..."
-	CopyBootstrapAndRun $BootstrapRootScript
+	Write-Host "Providing root user bootstrapping in the ""$InstanceName"" wsl instance..." -ForegroundColor Blue
+	#CopyBootstrapAndRun -instanceName $instanceName -bootstrapFile $BootstrapRootScript
 	Write-Host "Root user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
 }
 #Own exports often contains users -> then no longer UserName parameter is mandatory
 if ( $PSBoundParameters.ContainsKey('UserName') ){
-	if( CheckIfLinuxUserExists -user_name $UserName ) {
-		Write-Host "WARNING: The Linux user ""$UserName"" already exists. Skipping actions for the user...." -ForegroundColor Yellow
-	} else{
-		Write-Host "Creating default user: ""$UserName"""
-		$default_cnt="echo default=""$UserName"" >> /etc/wsl.conf"
-		wsl -d $InstanceName -e sh -c "echo '[user]' > /etc/wsl.conf"
-		wsl -d $InstanceName -e sh -c """$default_cnt"""
-		wsl -d $InstanceName adduser --gecos $UserName $UserName '&&' adduser $UserName sudo
-		if ($BootstrapUserScript){
-			Write-Host "Providing ""$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance..."
-			CopyBootstrapAndRun $BootstrapUserScript -user_name $UserName
-			Write-Host """$UserName""" user bootstrapping in the ""$InstanceName"" wsl instance has been finished"
-		}
-	}
+	CreateLinuxUser -instanceName $InstanceName -manager $package_manager -userName $UserName
 }
-wsl --terminate Ubut1
-Write-Host "Done. Instance ""$InstanceName"" has been created successfuly"
-Write-Host "Welcome in your fresh Linux box..."
+Write-Host ""
+Write-Host "Done. Instance ""$InstanceName"" has been created successfuly" -ForegroundColor Green
+Write-Host "Restarting the ""$InstanceName"" Linux Instance..." -ForegroundColor Blue
+wsl -t $InstanceName
+Write-Host ""
+Write-Host "Welcome in your fresh Linux box..." -ForegroundColor Blue
+Write-Host ""
 wsl -d $InstanceName 

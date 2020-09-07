@@ -1,5 +1,8 @@
 #/bin/sh
-apt-get update
-apt-get -y upgrade
+#place necessary commands here
+#to customize the Ubuntu WSL image
+
+#apt-get update
+#apt-get -y upgrade
 
 
