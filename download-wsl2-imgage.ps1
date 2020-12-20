@@ -15,16 +15,27 @@
         Official Ubuntu image is library/ubuntu etc... 
     
     .Parameter Tag   
-		Specifies the DckerHub image Tag
-		If not specified, then the latest tag is used
+		Specifies the DockerHub image Tag 
+		If not specified the 'latest' tag is used
     
     .Parameter Destination    
         Folder where the downloaded image will be stored
 
-	.Example
-        download-wsl2-imgage.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL
-		
-		Downloads the fedora 32 image and store it at e:\WSL folder
+    .Parameter MakeDir
+        If specified then the script will create sub-folder at Destination 
+        with name 'Image_Tag' and then downloads the image here.
+        If the Tag is not specified, only the 'Image' sub-folder is created
+
+    .Parameter Force
+        If specified and image already exists then image is overwritten by new one.
+        Otherwise the script prints warning and exit
+
+    .Example
+        download-wsl2-imgage.ps1 -Image library/ubuntu -Destination E:\WSL_ubuntu
+            Downloads the latest ubuntu image and stores it at E:\WSL_ubuntu folder
+
+        download-wsl2-imgage.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL -MakeDir
+		    Downloads the fedora 32 image and stores it at E:\WSL\fedora_32 folder
 
     .Notes
         NAME:      download-wsl2-imgage.ps1
@@ -36,37 +47,91 @@
 param (
     [Parameter(Mandatory)][string]$Image,
     [Parameter(Mandatory)][string]$Destination,
-    [string]$Tag = ( "latest")
+    [string]$Tag = "latest",
+    [switch]$MakeDir,
+    [switch]$Force
 
 )
 
-
-#$image="library/fedora"
-#$image="library/ubuntu"
-$version=$tag
-#$workDir="S:\wkDir"
-$workDir=$Destination
+function FinScript {
+    Write-Host ""
+    Write-Host "Unable to continue...."
+    Write-Host ""
+	exit
+}
 Function UnpackGzipFile{
     Param(
         $infile,
         $outfile = ($infile -replace '\.gz$','')
         )
     $inputData = New-Object System.IO.FileStream $inFile, ([IO.FileMode]::Open), ([IO.FileAccess]::Read), ([IO.FileShare]::Read)
-    $output = New-Object System.IO.FileStream $outFile, ([IO.FileMode]::Create), ([IO.FileAccess]::Write), ([IO.FileShare]::None)
+    $outputData = New-Object System.IO.FileStream $outFile, ([IO.FileMode]::Create), ([IO.FileAccess]::Write), ([IO.FileShare]::None)
     $gzipStream = New-Object System.IO.Compression.GzipStream $inputData, ([IO.Compression.CompressionMode]::Decompress)
     $buffer = New-Object byte[](1024)
     while($true){
         $read = $gzipstream.Read($buffer, 0, 1024)
         if ($read -le 0){break}
-        $output.Write($buffer, 0, $read)
+        $outputData.Write($buffer, 0, $read)
         }
     $gzipStream.Close()
-    $output.Close()
+    $outputData.Close()
     $inputData.Close()
 }
 
-Write-Host "Beginning..."
-$authUrl="https://auth.docker.io/token?service=registry.docker.io&scope=repository:" +$image + ":pull"
+Function PackGzipFile{
+    Param(
+        $infile,
+        $outfile =  ($infile -replace '\.tar$','.tgz')
+        )
+    $inputData = New-Object System.IO.FileStream $inFile, ([IO.FileMode]::Open), ([IO.FileAccess]::Read), ([IO.FileShare]::Read)
+    $outputData = New-Object System.IO.FileStream $outFile, ([IO.FileMode]::Create), ([IO.FileAccess]::Write), ([IO.FileShare]::None)
+    $gzipStream = New-Object System.IO.Compression.GzipStream $outputData, ([IO.Compression.CompressionMode]::Compress)
+    $buffer = New-Object byte[](1024)
+    while($true){
+        $read = $inputData.Read($buffer, 0, 1024)
+        if ($read -le 0){break}
+        $gzipStream.Write($buffer, 0, $read)
+        }
+    $gzipStream.Close()
+    $outputData.Close()
+    $inputData.Close()
+}
+#For better readability
+Write-Host ""
+
+if (-Not (Test-Path -Path $Destination -PathType Container)){
+    Write-Host "The folder ""$Destination"" doesn't exist!" -ForegroundColor Red
+    FinScript
+
+}
+$imgName=Split-Path -path $Image -Leaf
+if(-Not($Tag -eq "latest")){
+    $imgName = $imgName + "_" + $Tag
+}
+if ($MakeDir.IsPresent){
+    $workDir=Join-Path -Path $Destination -ChildPath $imgName
+}else{
+    $workDir=$Destination
+}
+$tarImgName = $imgName + ".tar"
+$gzipImgName = $imgName + ".tgz"
+$gzipImgPath = Join-Path -Path $workDir -ChildPath $gzipImgName
+
+if(Test-Path -Path $gzipImgPath -PathType Leaf){
+    if(-not ($Force.IsPresent)){
+        Write-Host "The image file ""$gzipImgName"" already exists!" -ForegroundColor Red
+        Write-Host "To overwrite the file by new one use the -Force parameter."
+        FinScript
+    }else{
+        Write-Host "WARNING: The -Force parameter has been specified" -ForegroundColor Yellow 
+        Write-Host "WARNING: The image file ""$gzipImgName"" will be overwritten." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
+Write-Host "Downloading Docker image ""$Image::$Tag""..."
+Write-Host ""
+$authUrl="https://auth.docker.io/token?service=registry.docker.io&scope=repository:" +$Image + ":pull"
 
 $response=Invoke-RestMethod -Uri $authUrl
 
@@ -75,30 +140,28 @@ $token = $response.token;
 $header= @{
     "Authorization" = "Bearer $token" 
 }
-$layers=Invoke-RestMethod -Headers $header -Uri "https://registry-1.docker.io:/v2/$image/manifests/$version"
+$layers=Invoke-RestMethod -Headers $header -Uri "https://registry-1.docker.io:/v2/$Image/manifests/$Tag"
 #Extract names of blob (sha256:xxyyzz......)
 $allBlobSums= $layers.fsLayers | ForEach-Object -MemberName blobSum
-#sometimes we can see duplicates in list (Fedore32 for example, then try to kick them off)
-#but because layers are applied in specific order, we have to kick off all previous duplicates
-#and leave only the latest
-#then reverse array
+#sometimes duplicates are in the list (Fedora32 for example) then try to kick them off
+#Layers are applied in specific order then we have to kick off all previous duplicates
+#and leave only the latest - reverse the array
 [array]::Reverse($allBlobSums)
-#is not specified order to process list in Select-Object - -Unique
-#then to be sure, this method is disabled
+#is not specified order to process list in Select-Object -Unique
+#Can't use this method ...
 ###$uniqueBlobs = $allBlobSums | Select-Object -Unique 
-#And we can try something more conservative, but where the order is granted
+#This is little bit conservative, but the order is granted...
 $uniqueBlobs=@()
 foreach($blobSum in $allBlobSums){
     if ( -not ( $uniqueBlobs -contains $blobSum)){
         $uniqueBlobs += $blobSum
     }
 }
-#finally, reverse order back, so we have unique blob list, from the oldest to newer
+#finally reverse the array order again to get unique blob list ordered from the oldest to newer
 [array]::Reverse($uniqueBlobs)
 
 New-Item -ItemType Directory -Force -Path $workDir -ErrorAction Stop | Out-Null
-$imgName=Split-Path -path $image -Leaf
-$imgName = $imgName+"_"+$version + ".tar"
+
 
 $tarList=@()
 $ProgressPreference = 'SilentlyContinue'
@@ -111,7 +174,7 @@ foreach( $blobName in $uniqueBlobs) {
     $tarFile = Join-Path $workDir $tarName
     #$tarList += $tarFile
     $tarList += $tarName
-    Invoke-WebRequest -Headers $header -OutFile $outName -Uri "https://registry-1.docker.io/v2/$image/blobs/$blobName"
+    Invoke-WebRequest -Headers $header -OutFile $outName -Uri "https://registry-1.docker.io/v2/$Image/blobs/$blobName"
     UnpackGzipFile -infile $outName
     #Remove gz file, leave tar only
     Remove-Item -Path $outName
@@ -134,7 +197,27 @@ for ($i=1; $i -lt $tarList.Length; $i++){
 }
 #rename the meged image to final name ->container name and version
 $finalTar = Join-Path  -Path $workDir -ChildPath $finalTar
-$imgName = Join-Path -Path $workDir -ChildPath $imgName
-Rename-Item -Path $finalTar -NewName $imgName
+$tarImgPath = Join-Path -Path $workDir -ChildPath $tarImgName
+Rename-Item -Path $finalTar -NewName $tarImgName
+#If we are here anf gzip file already exist, then -Force has been specified
+#Then remove original anf create new one
+if(Test-Path -Path $gzipImgPath -PathType Leaf){
+    Remove-Item -Path $gzipImgPath
+}
+PackGzipFile $tarImgPath
+
+if(Test-Path -Path $gzipImgPath -PathType Leaf){
+    Write-Host "The WSL2 image ""$gzipImgName"" has been created successfully." -ForegroundColor Green
+    Write-Host ""
+}else{
+    Write-Host "Creation of the WSL2 image ""$gzipImgName"" failed!" -ForegroundColor Red
+    Write-Host ""
+
+}
+#remove tar
+Remove-Item -Path $tarImgPath
+
+
+
 
 
