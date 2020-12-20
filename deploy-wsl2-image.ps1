@@ -1,6 +1,6 @@
 <#
 	.Synopsis
-		 Deploy new WSL2 Linux system instance from specified image
+		Deploy new WSL2 Linux system instance from specified image
     .Description
 		This script automates deployment of fresh WSL2 instances from
 		specified imege or exported backup. By this script is possible to
@@ -10,12 +10,12 @@
 		specified scripts. These bootstap scripts can be run as
 		root, normal user or both and by this mechanism is possible
 		to  customise image automatically.
-       		
+
 	.Parameter InstanceName    
-        Specifies the name of the new WSL2 Linux instance. Must be unique.
-	
+		Specifies the name of the new WSL2 Linux instance. Must be unique.
+
 	.Parameter UserName
-	    Username of user account to create inside the wsl2 Linux instance. 
+		Username of user account to create inside the wsl2 Linux instance. 
 		Sudo will be also allowed for the user
 		
     .Parameter Destination    
@@ -28,29 +28,28 @@
 		This parameter allows to organize WSL2 Instances vhdx inside 
 		this folder by this way
 		- DisksDir
-		   - Instance1\ext4.vhdx
-		   - Instance2\ext4.vhdx
-		   - .....
-		   - InstanceX\ext4.vhdx
-
+			- Instance1\ext4.vhdx
+			- Instance2\ext4.vhdx
+			- .....
+			- InstanceX\ext4.vhdx
+	
 	.Parameter Image   
 		Path to image from which the instance will be cloned 
 		Mutual Exclusive with UbuntuImageDir
-    
+
 	.Parameter UbuntuImageDir
 		Path where the Ubuntu 20.04 image will be downloaded if not exists
 		And then used for deplyment. Mutual Exclusive with Image parameter
-		
+
 	.Parameter ForceDownload
 		If specified, image will be re-dowloaded to UbuntuImageDir even if exists
 		If UbuntuImageDir is not pecified, parameter is ignored
-	
+
 	.Parameter BootstrapRootScript
 		If specified then the file is copied to /root folder inside the new fresh 
 		image and run as shell script under the root user account.
 		It allows to provide necessary modifications to deployed image as install
 		required software packages, update image by package manager to latest versions etc...
-		
 
 	.Parameter BootstrapUserScript
 		If specified, script copies this file inside the new fresh image and run
@@ -59,15 +58,15 @@
 		for the user account, as copied dot files and other configs, etc...
 
 	.Example
-        deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz
-		
+		deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz
+
 		Deploy WSL instance with name Ubuntu22, store disk in 
 		e:\WSL\Disks and create new default user with name linux_user
 		As source use image E:\WSL\Ubu.tar.gz
 
-    .Notes
-        NAME:      deploy-wsl2-image.ps1
-        AUTHOR:    Zdenek Polach
+	.Notes
+		NAME:      deploy-wsl2-image.ps1
+		AUTHOR:    Zdenek Polach
 		WEBSITE:   https://polach.me
 #>
 

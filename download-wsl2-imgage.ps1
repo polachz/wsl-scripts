@@ -16,7 +16,7 @@
     
     .Parameter Tag   
         Specifies the DockerHub image Tag 
-		If not specified the 'latest' tag is used
+        If not specified the 'latest' tag is used
     
     .Parameter Destination    
         Folder where the downloaded image will be stored
