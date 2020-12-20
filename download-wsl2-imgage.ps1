@@ -1,6 +1,6 @@
 <#
-	.Synopsis
-		 Download a Docker container image then it can be deployed as a WSL2 Linux system instance.
+    .Synopsis
+        Download a Docker container image then it can be deployed as a WSL2 Linux system instance.
     .Description
         The list of WSL2 supported distro images in the MS Store is 
         very limited.But hopefully the Docer image can be easily transformed
@@ -9,13 +9,13 @@
         to comfortable state. For that the deploy-wsl2-image.ps1 script
         can be used. 
 			
-	.Parameter Image    
+    .Parameter Image    
         Specifies the docker hub image name. Consider that Dcoker Official images
         has prefix library, then Fedora official image name is library/fedora
         Official Ubuntu image is library/ubuntu etc... 
     
     .Parameter Tag   
-		Specifies the DockerHub image Tag 
+        Specifies the DockerHub image Tag 
 		If not specified the 'latest' tag is used
     
     .Parameter Destination    
@@ -35,12 +35,12 @@
             Downloads the latest ubuntu image and stores it at E:\WSL_ubuntu folder
 
         download-wsl2-imgage.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL -MakeDir
-		    Downloads the fedora 32 image and stores it at E:\WSL\fedora_32 folder
+            Downloads the fedora 32 image and stores it at E:\WSL\fedora_32 folder
 
     .Notes
         NAME:      download-wsl2-imgage.ps1
         AUTHOR:    Zdenek Polach
-		WEBSITE:   https://polach.me
+        WEBSITE:   https://polach.me
 #>
 
 [CmdletBinding(SupportsShouldProcess=$True)]
