@@ -1,7 +1,37 @@
 # wsl-scripts
-Various scripts to make life with WSL easier
+Various scripts to make life with **Windows Subsystem for Linux** ( WSL2 ) easier:
 
-* **Deploy Script to create new wsl instance** --  _deploy-wsl2-image.ps1_
+* **Download Script to create WSL2 Image from any DockerHub image** --  [_download-wsl2-imgage.ps1_](#download-script)
+* **Deploy Script to create new WSL2 Linux instance from an WSL2 Image** --  [_deploy-wsl2-image.ps1_](#deploy-script)
+
+
+### Download Script
+
+The script is able to download and create deployable WSL2 image from a DockerHub image. The image can be deployed as WSL2 instance directly by _wsl.exe --import_ command or by the script [_deploy-wsl2-image.ps1_](#deploy-script) then.
+
+##### Usage:
+
+`download-wsl2-imgage.ps1 -Image library/ubuntu -Destination E:\WSL_ubuntu`
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Downloads the latest ubuntu image and stores it at 'E:\WSL_ubuntu' folder
+
+`download-wsl2-imgage.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL -MakeDir`
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Downloads the fedora 32 image and stores it at 'E:\WSL\fedora_32' folder
+
+###### Parameters:
+
+* **Image** (Mandatory) - Specifies the docker hub image name. Consider that Dcoker Official images has prefix library, then Fedora official image name is library/fedora. Official Ubuntu image name is library/ubuntu etc... 
+
+* **Destination** (Mandatory) -  Folder where the created WSL2 Linux instance image will be stored or where sub-folder will be created if the **-MakeDir** parameter is specified.
+
+* **Tag** (default value = **latest**) - Specifies the DockerHub image Tag. If not specified the **'latest'** tag is used.
+
+* **MakeDir** - If specified then the script will create sub-folder at Destination with name 'Image_Tag' and then downloads the image here. If the Tag is not specified, only the 'Image' sub-folder is created
+
+* **Force** - If specified and image already exists then image is overwritten by new one. Otherwise the script prints warning and exits.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 ### Deploy Script
 
@@ -11,8 +41,10 @@ Script also allows bootstrapping of the deployed image by specified scripts. The
 
 ##### Usage:
 
-deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz
+`deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz`
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Deploy WSL instance with name Ubuntu22, store disk in the folder 'e:\WSL\Disks' and<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;creates new default user with name 'linux_user'. As source uses image 'E:\WSL\Ubu.tar.gz'
 
 ###### Parameters:
 
