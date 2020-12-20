@@ -30,6 +30,9 @@ The script is able to download and create deployable WSL2 image from a DockerHub
 * **MakeDir** - If specified then the script will create sub-folder at Destination with name 'Image_Tag' and then downloads the image here. If the Tag is not specified, only the 'Image' sub-folder is created
 
 * **Force** - If specified and image already exists then image is overwritten by new one. Otherwise the script prints warning and exits.
+### IMPORTANT NOTICE
+
+Because native Windows tar executable doesn't support **--combine** option and this is essential for correct script functionality, the external tar Windows executable (renamed to **_img-pkg.exe_**) is included into the repository. If you do not trust this file then find your own tar executable with **--combine** supported option and rename it to **img-pkg.exe**. 
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
