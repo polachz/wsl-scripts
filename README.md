@@ -4,7 +4,12 @@ Various scripts to make life with **Windows Subsystem for Linux** ( WSL2 ) easie
 * **Download Script to create WSL2 Image from any DockerHub image** --  [_download-wsl2-imgage.ps1_](#download-script)
 * **Deploy Script to create new WSL2 Linux instance from an WSL2 Image** --  [_deploy-wsl2-image.ps1_](#deploy-script)
 
+##### Hint:
 
+To bypass Power Shell policy, you can use this trick from PowerShell console:
+
+    PowerShell.exe -ExecutionPolicy Bypass -File script_to_run.ps1 <params...>
+      
 ### Download Script
 
 The script is able to download and create deployable WSL2 image from a DockerHub image. The image can be deployed as WSL2 instance directly by _wsl.exe --import_ command or by the script [_deploy-wsl2-image.ps1_](#deploy-script) then.
