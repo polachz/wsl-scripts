@@ -1,7 +1,7 @@
 # wsl-scripts
 Various scripts to make life with **Windows Subsystem for Linux** ( WSL2 ) easier:
 
-* **Download Script to create WSL2 Image from any DockerHub image** --  [_download-wsl2-imgage.ps1_](#download-script)
+* **Download Script to create WSL2 Image from any DockerHub image** --  [_download-wsl2-image.ps1_](#download-script)
 * **Deploy Script to create new WSL2 Linux instance from an WSL2 Image** --  [_deploy-wsl2-image.ps1_](#deploy-script)
 
 ##### Hint:
@@ -16,11 +16,11 @@ The script is able to download and create deployable WSL2 image from a DockerHub
 
 ##### Usage:
 
-`download-wsl2-imgage.ps1 -Image library/ubuntu -Destination E:\WSL_ubuntu`
+`download-wsl2-image.ps1 -Image library/ubuntu -Destination E:\WSL_ubuntu`
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Downloads the latest ubuntu image and stores it at 'E:\WSL_ubuntu' folder
 
-`download-wsl2-imgage.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL -MakeDir`
+`download-wsl2-image.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL -MakeDir`
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Downloads the fedora 32 image and stores it at 'E:\WSL\fedora_32' folder
 

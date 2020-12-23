@@ -31,14 +31,14 @@
         Otherwise the script prints warning and exit
 
     .Example
-        download-wsl2-imgage.ps1 -Image library/ubuntu -Destination E:\WSL_ubuntu
+        download-wsl2-image.ps1 -Image library/ubuntu -Destination E:\WSL_ubuntu
             Downloads the latest ubuntu image and stores it at E:\WSL_ubuntu folder
 
-        download-wsl2-imgage.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL -MakeDir
+        download-wsl2-image.ps1 -Image library/fedora -Tag 32 -Destination E:\WSL -MakeDir
             Downloads the fedora 32 image and stores it at E:\WSL\fedora_32 folder
 
     .Notes
-        NAME:      download-wsl2-imgage.ps1
+        NAME:      download-wsl2-image.ps1
         AUTHOR:    Zdenek Polach
         WEBSITE:   https://polach.me
 #>
