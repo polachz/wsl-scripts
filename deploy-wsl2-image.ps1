@@ -390,8 +390,8 @@ function CreateLinuxUser {
 	Write-Host "The default user: ""$userName"" created successfully" -ForegroundColor Green
 	Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
 
-	########### This is less echo implementation sdependent version, but now commented out ######
-	########### preserved if will be on some distro necessary when echo -e will not work ########
+	######### This is implementation not dependent on echo -e  -   commented out for now      ###
+	######### Preserved if will be necessary on a distro where echo -e will not work properly ###
 
 	# wsl -d $InstanceName -- eval "echo '[user]' > /etc/wsl.conf"
 	# wsl -d $InstanceName -- eval "echo default=""$userName"" >> /etc/wsl.conf"
