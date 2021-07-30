@@ -11,30 +11,30 @@
 		root, normal user or both and by this mechanism is possible
 		to  customise image automatically.
 
-	.Parameter InstanceName    
+	.Parameter InstanceName
 		Specifies the name of the new WSL2 Linux instance. Must be unique.
 
 	.Parameter UserName
-		Username of user account to create inside the wsl2 Linux instance. 
+		Username of user account to create inside the wsl2 Linux instance.
 		Sudo will be also allowed for the user
-		
-    .Parameter Destination    
+
+    .Parameter Destination
         Folder where the vmdx file for the WSL2 instance will be created.
 		Mutual exclusive with DisksDir
 
 	.Parameter DisksDir
 		Folder where subdir with InstanceName will be created to store
 		WSL2 instance ext4.vmdx virtual disk file.
-		This parameter allows to organize WSL2 Instances vhdx inside 
+		This parameter allows to organize WSL2 Instances vhdx inside
 		this folder by this way
 		- DisksDir
 			- Instance1\ext4.vhdx
 			- Instance2\ext4.vhdx
 			- .....
 			- InstanceX\ext4.vhdx
-	
-	.Parameter Image   
-		Path to image from which the instance will be cloned 
+
+	.Parameter Image
+		Path to image from which the instance will be cloned
 		Mutual Exclusive with UbuntuImageDir
 
 	.Parameter UbuntuImageDir
@@ -46,7 +46,7 @@
 		If UbuntuImageDir is not pecified, parameter is ignored
 
 	.Parameter BootstrapRootScript
-		If specified then the file is copied to /root folder inside the new fresh 
+		If specified then the file is copied to /root folder inside the new fresh
 		image and run as shell script under the root user account.
 		It allows to provide necessary modifications to deployed image as install
 		required software packages, update image by package manager to latest versions etc...
@@ -54,13 +54,13 @@
 	.Parameter BootstrapUserScript
 		If specified, script copies this file inside the new fresh image and run
 		it inside the shell as user specified by UserName parameter.
-		It allows to provide necessary modifications to deployed image 
+		It allows to provide necessary modifications to deployed image
 		for the user account, as copied dot files and other configs, etc...
 
 	.Example
 		deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz
 
-		Deploy WSL instance with name Ubuntu22, store disk in 
+		Deploy WSL instance with name Ubuntu22, store disk in
 		e:\WSL\Disks and create new default user with name linux_user
 		As source use image E:\WSL\Ubu.tar.gz
 
@@ -154,15 +154,15 @@ function CopyFileFromWinToWSL {
     Copy-Item $winFilePath -Destination $temp_file
     #to make copy successfull, we have to use
 	#mounted windows disk as source, aka:
-	#/mnt/c/Windows..... 
+	#/mnt/c/Windows.....
 	$mnt_file_path = $temp_file.FullName
 	$disk_char = $mnt_file_path.Substring(0,1)
 	$disk_char = $disk_char.ToLower()
 	$mnt_file_path = $mnt_file_path.Substring(1)
 	$mnt_file_path = $disk_char +  $mnt_file_path
 	#then transform it on linux path -> replace \ for / and remove : from disk name
-	$mnt_file_path = $mnt_file_path -Replace "\\", "/" 
-	$mnt_file_path = $mnt_file_path -Replace  ":", "" 
+	$mnt_file_path = $mnt_file_path -Replace "\\", "/"
+	$mnt_file_path = $mnt_file_path -Replace  ":", ""
 	$mnt_file_path = "'/mnt/" + $mnt_file_path +"'"
 	#copy file
     wsl -d $instanceName -u $userName cp $mnt_file_path $wslFilePath
@@ -177,6 +177,7 @@ function CopyFileFromWinToWSL {
 	wsl -d $instanceName -u $userName chmod $linuxRights $wslFilePath
     return $True
 }
+
 function CopyBootstrapAndRun {
 	param (
 		[string] $instanceName,
@@ -197,6 +198,8 @@ function CopyBootstrapAndRun {
 	#execute the file
 	if ($copied -eq $True) {
 		wsl -d $instanceName -u $userName sh -c  $wsl_dest_file
+		#and remove file - not necessary anymore
+		wsl -d $instanceName -u $userName -- rm -f $wsl_dest_file
 	}
 }
 
@@ -204,8 +207,8 @@ function CheckIfLinuxUserExists {
 	param (
 		[string] $instanceName,
 		[string] $userName
-	)	
-	$test_output = wsl -d $instanceName id -u $userName 2>&1 
+	)
+	$test_output = wsl -d $instanceName id -u $userName 2>&1
 	$user_exists = -not ( $test_output -match 'no such user' )
 	return $user_exists
 }
@@ -214,9 +217,9 @@ function CheckIfLinuxBinaryExists {
 	param (
         [string] $instanceName,
 		[string] $binaryName
-	)	
-    $test_output = wsl -d $instanceName -u "root" whereis -b $binaryName 2>&1 
-    $exe_exists = $test_output -match "/$binaryName" 
+	)
+    $test_output = wsl -d $instanceName -u "root" whereis -b $binaryName 2>&1
+    $exe_exists = $test_output -match "/$binaryName"
 	return $exe_exists
 }
 function CheckIfLinuxFileOnPathExists {
@@ -225,8 +228,8 @@ function CheckIfLinuxFileOnPathExists {
 		[string] $filePath
     )
     $script = "[ -f '$filePath' ] && echo exists"
-    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script" 
-    $file_exists = $test_output -match "exists" 
+    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script"
+    $file_exists = $test_output -match "exists"
 	return $file_exists
 }
 
@@ -236,8 +239,8 @@ function CheckIfLinuxDirectoryOnPathExists {
 		[string] $dirPath
     )
     $script = "[ -d '$dirPath' ] && echo exists"
-    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script" 
-    $dir_exists = $test_output -match "exists" 
+    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script"
+    $dir_exists = $test_output -match "exists"
 	return $dir_exists
 }
 
@@ -247,8 +250,8 @@ function CheckIfLinuxGroupExists {
 		[string] $group
     )
     $script = "cat /etc/group | grep $group"
-    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script" 
-    $group_exists = $test_output -match "$group" 
+    $test_output = wsl -d $instanceName -u "root" -e sh -c "$script"
+    $group_exists = $test_output -match "$group"
 	return $group_exists
 }
 function DetectPackageManager {
@@ -296,7 +299,7 @@ function InstallPackageToWSL {
         [PackageManagers] $manager,
         [string] $packageName
     )
-    
+
     switch($manager)
     {
         apt {
@@ -340,7 +343,7 @@ function CreateLinuxUser {
         [PackageManagers] $manager,
         [string] $userName
 	)
-	
+
 	if( CheckIfLinuxUserExists -instanceName $instanceName -userName $userName ) {
 		Write-Host "WARNING: The Linux user ""$userName"" already exists. Skipping actions for the user...." -ForegroundColor Yellow
 		return $False
@@ -362,7 +365,7 @@ function CreateLinuxUser {
 			wsl -d $instanceName -u 'root' dnf -y install 'cracklib-dicts'
 		}
     }
-    
+
 	if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/sudo') ){
 		InstallPackageToWSL -instanceName $instanceName -manager $manager -packageName 'sudo'
 		if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/bin/sudo') ){
@@ -371,7 +374,7 @@ function CreateLinuxUser {
 		}
 	}
 	wsl -d $InstanceName -e sh -c "useradd -m -s /bin/bash $userName"
-	
+
 	if( -not (CheckIfLinuxUserExists -instanceName $InstanceName -userName $userName) ) {
 		Write-Host "The default user: ""$userName"" was not created!" -ForegroundColor Red
 		return $False
@@ -381,10 +384,24 @@ function CreateLinuxUser {
 	AllowSudoForUSer -instanceName $instanceName -userName $userName
 	#create wsl.conf file
 	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
-	$default_cnt="echo default=""$userName"" >> /etc/wsl.conf"
-	wsl -d $InstanceName -e sh -c "echo '[user]' > /etc/wsl.conf"
-	wsl -d $InstanceName -e sh -c """$default_cnt"""
+	$lnx_hostname=$instanceName.ToLower()
+	wsl -d $InstanceName -- eval "echo -e '[user]\ndefault=\""$userName\""\n\n[network]\nhostname=\""$lnx_hostname\""' > /etc/wsl.conf"
+
 	Write-Host "The default user: ""$userName"" created successfully" -ForegroundColor Green
+	Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
+
+	########### This is less echo implementation sdependent version, but now commented out ######
+	########### preserved if will be on some distro necessary when echo -e will not work ########
+
+	# wsl -d $InstanceName -- eval "echo '[user]' > /etc/wsl.conf"
+	# wsl -d $InstanceName -- eval "echo default=""$userName"" >> /etc/wsl.conf"
+	# Write-Host "The default user: ""$userName"" created successfully" -ForegroundColor Green
+	# wsl -d $InstanceName -- eval 'echo "" >> /etc/wsl.conf'
+	# wsl -d $InstanceName -- eval 'echo ''[network]'' >> /etc/wsl.conf'
+	# wsl -d $InstanceName -- eval "echo hostname=""$lnx_hostname"" >> /etc/wsl.conf"
+	# Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
+
+	###############################################################################################
 
 	if ($BootstrapUserScript){
 		Write-Host "Providing ""$userName"" user bootstrapping in the ""$InstanceName"" wsl instance..." -ForegroundColor Blue
@@ -411,12 +428,12 @@ if ( $PSBoundParameters.ContainsKey('Destination') ){
 	if ( -not (Test-Path -Path $Destination -PathType Container ) ){
 		Write-Host "Destination folder ""$Destination"" does not exist!!" -foregroundcolor red
 		FinScript
-	}	
+	}
 } elseif ( $PSBoundParameters.ContainsKey('DisksDir') ){
 	if ( -not (Test-Path -Path $DisksDir -PathType Container ) ){
 		Write-Host "DisksDir folder ""$DisksDir"" does not exist!!" -foregroundcolor red
 		FinScript
-	}	
+	}
 	#We will deploy to the $InstanceName subdir.
 	$CreateDestDir=$true
 	$Destination = Join-Path $DisksDir $InstanceName
@@ -426,7 +443,7 @@ if ( $PSBoundParameters.ContainsKey('Destination') ){
 }
 
 #Handle the destination folder for vhdx
-$file_exists = Test-Path -Path $Destination -PathType Container  
+$file_exists = Test-Path -Path $Destination -PathType Container
 if ( $file_exists -eq $True ){
 	$vhdx_check = Join-Path -Path $Destination -ChildPath "ext4.vhdx"
 	$file_exists = Test-Path -Path $vhdx_check -PathType Leaf
@@ -452,25 +469,25 @@ if ( $PSBoundParameters.ContainsKey('Image') ){
 		$image_name = Split-Path $image_full_path -Leaf
 		$imageDir = Split-Path $image_full_path -Parent
 	}
-}elseif ( $PSBoundParameters.ContainsKey('UbuntuImageDir') ){    
+}elseif ( $PSBoundParameters.ContainsKey('UbuntuImageDir') ){
 	$imageUrl = $ubuntu_image_url
 	$imageDir = $UbuntuImageDir
 	$ByImageDir = $True
 	$image_full_path = ""
 	$possible_script = Join-Path  -Path $PSScriptRoot -ChildPath 'ubuntu_root_bootstrap'
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf 
-	#Check if we have right bootstrap files for the image 
+	$file_exists = Test-Path -Path $possible_script -PathType Leaf
+	#Check if we have right bootstrap files for the image
 	#at same folder as script resides
 	if ($file_exists -eq $True ){
 		$image_root_bootstrap = $possible_script
 	}
 	$possible_script = Join-Path  -Path $PSScriptRoot -ChildPath 'ubuntu_user_bootstrap'
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf 
+	$file_exists = Test-Path -Path $possible_script -PathType Leaf
 	if ($file_exists -eq $True ){
 		$image_user_bootstrap = $possible_script
 	}
 }
-#elseif (in future ....another image option....) 
+#elseif (in future ....another image option....)
 
 
 
@@ -481,7 +498,7 @@ if ($ByImageDir){
 	}
 	$image_name = Split-Path $imageUrl -Leaf
 	$image_full_path = Join-Path $ImageDir $image_name
-	$file_exists = Test-Path -Path $image_full_path -PathType Leaf 
+	$file_exists = Test-Path -Path $image_full_path -PathType Leaf
 	if ($file_exists -eq $True ){
 		#image already exists
 		if ( $ForceDownload ) {
@@ -521,19 +538,19 @@ if ( $PSBoundParameters.ContainsKey('BootstrapRootScript') ){
 }else{
 	#Try to find script in image folder
 	$possible_script = Join-Path  -Path $imageDir -ChildPath $default_root_bootstrap_script_name
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf 
+	$file_exists = Test-Path -Path $possible_script -PathType Leaf
 	if ($file_exists -eq $True ){
 		Write-Host "Root Bootstrap script has been detected at Image Folder" -ForegroundColor Yellow
 		$BootstrapRootScript = $possible_script
 	}else{
 		#Try if default bootstrapping is not deployed with this script for the image
 		if (-not ( [string]::IsNullOrEmpty( $image_root_bootstrap ))){
-			$file_exists = Test-Path -Path $image_root_bootstrap -PathType Leaf 
+			$file_exists = Test-Path -Path $image_root_bootstrap -PathType Leaf
 			if ($file_exists -eq $True ){
 				Write-Host "Default image root user bootstrapping script has been detected at script folder" -ForegroundColor Yellow
 				$BootstrapRootScript = $image_root_bootstrap
 			}else{
-				$BootstrapRootScript = ""	
+				$BootstrapRootScript = ""
 			}
 		}else{
 			$BootstrapRootScript = ""
@@ -548,22 +565,22 @@ if ( $PSBoundParameters.ContainsKey('BootstrapUserScript') ){
 }else{
 	#Try to find script in image folder
 	$possible_script = Join-Path  -Path $imageDir -ChildPath $default_user_bootstrap_script_name
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf 
+	$file_exists = Test-Path -Path $possible_script -PathType Leaf
 	if ($file_exists -eq $True ){
 		Write-Host "User Bootstrap script has been detected at Image Folder" -ForegroundColor Yellow
 		$BootstrapUserScript = $possible_script
 	}else{
 		#Try if default bootstrapping is not deployed with thi script for the image
 		if (-not ( [string]::IsNullOrEmpty( $image_user_bootstrap ))){
-			$file_exists = Test-Path -Path $image_user_bootstrap -PathType Leaf 
+			$file_exists = Test-Path -Path $image_user_bootstrap -PathType Leaf
 			if ($file_exists -eq $True ){
 				Write-Host "Default image user bootstrapping script has been detected at script folder" -ForegroundColor Yellow
 				$BootstrapUserScript = $image_user_bootstrap
 			}else{
-				$BootstrapUserScript = ""		
+				$BootstrapUserScript = ""
 			}
 		} else {
-			$BootstrapUserScript = ""	
+			$BootstrapUserScript = ""
 		}
 	}
 }
@@ -587,6 +604,7 @@ Write-Host "The WSL Instance ""$InstanceName"" has been created successfuly"
 
 #start the instance to allow next processing
 wsl -d $InstanceName echo "Starting WSL $InstanceName.."
+
 $package_manager = DetectPackageManager -instanceName $InstanceName
 UpdateImageToLatestPackages -instanceName $InstanceName -manager $package_manager
 if ($BootstrapRootScript){
@@ -605,4 +623,4 @@ wsl -t $InstanceName
 Write-Host ""
 Write-Host "Welcome in your fresh Linux box..." -ForegroundColor Blue
 Write-Host ""
-wsl -d $InstanceName 
+wsl -d $InstanceName
