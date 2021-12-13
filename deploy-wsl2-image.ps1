@@ -152,19 +152,23 @@ function CopyFileFromWinToWSL {
     $temp_file = New-TemporaryFile
     #to be sure that file is on WSL mapped disk, use temp file in temp folder
     Copy-Item $winFilePath -Destination $temp_file
+    if ( -not (Test-Path -Path $temp_file -PathType Leaf -ErrorAction SilentlyContinue) ){
+	Write-Host "Creation of the Temp file for ""$winFilePath"" failed Can't be copied to WSL" -foregroundcolor red
+	return $False
+}
     #to make copy successfull, we have to use
-	#mounted windows disk as source, aka:
-	#/mnt/c/Windows.....
-	$mnt_file_path = $temp_file.FullName
-	$disk_char = $mnt_file_path.Substring(0,1)
-	$disk_char = $disk_char.ToLower()
-	$mnt_file_path = $mnt_file_path.Substring(1)
-	$mnt_file_path = $disk_char +  $mnt_file_path
-	#then transform it on linux path -> replace \ for / and remove : from disk name
-	$mnt_file_path = $mnt_file_path -Replace "\\", "/"
-	$mnt_file_path = $mnt_file_path -Replace  ":", ""
-	$mnt_file_path = "'/mnt/" + $mnt_file_path +"'"
-	#copy file
+    #mounted windows disk as source, aka:
+    #/mnt/c/Windows.....
+    $mnt_file_path = $temp_file.FullName
+    $disk_char = $mnt_file_path.Substring(0,1)
+    $disk_char = $disk_char.ToLower()
+    $mnt_file_path = $mnt_file_path.Substring(1)
+    $mnt_file_path = $disk_char +  $mnt_file_path
+    #then transform it on linux path -> replace \ for / and remove : from disk name
+    $mnt_file_path = $mnt_file_path -Replace "\\", "/"
+    $mnt_file_path = $mnt_file_path -Replace  ":", ""
+    $mnt_file_path = "'/mnt/" + $mnt_file_path +"'"
+    #copy file
     wsl -d $instanceName -u $userName cp $mnt_file_path $wslFilePath
     Remove-Item $temp_file
     if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath $wslFilePath) ){
@@ -266,6 +270,16 @@ function DetectPackageManager {
     }
     if( CheckIfLinuxBinaryExists -instanceName $instanceName -binaryName 'yum' ) {
         return [PackageManagers]::yum
+    }
+	#Fallback
+	if( CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/bin/dnf' ) {
+        return [PackageManagers]::dnf
+    }
+	if( CheckIfLinuxBinaryExists -instanceName $instanceName -filePath '/bin/yum' ) {
+        return [PackageManagers]::yum
+    }
+	if( CheckIfLinuxBinaryExists -instanceName $instanceName -filePath '/bin/apt-get' ) {
+        return [PackageManagers]::apt
     }
     return [PackageManagers]::unknown
 }
@@ -607,6 +621,10 @@ wsl -d $InstanceName echo "Starting WSL $InstanceName.."
 
 $package_manager = DetectPackageManager -instanceName $InstanceName
 UpdateImageToLatestPackages -instanceName $InstanceName -manager $package_manager
+#And now, restart the WSL instence. We had (who kbows why) missing /bin/mount
+#binary on the Fedora 35 without this restart step...
+wsl -t $InstanceName
+#Now continue with bootstrap
 if ($BootstrapRootScript){
 	Write-Host "Providing root user bootstrapping in the ""$InstanceName"" wsl instance..." -ForegroundColor Blue
 	CopyBootstrapAndRun -instanceName $instanceName -bootstrapFile $BootstrapRootScript
