@@ -29,12 +29,11 @@
     These rules are defined by json config file and rebind to new
     WSL network instances after Windows reboot. More details you can find
     at related github repo (see LINK)
-  - The script is based on https://github.com/ocroz/wsl2-boot repository.
-    Main credit goes to this author. I only addef FW rules possibilities
-    and modified workflow little bit.
+  - Main credit goes to author ocroz (https://github.com/ocroz/wsl2-boot)
+    I only added FW rules possibilities and modified workflow little bit.
 
 .LINK
-  https://github.com/ocroz/wsl2-boot
+  https://github.com/polachz/wsl-scripts
 #>
 
 [CmdletBinding()] Param(
@@ -43,11 +42,12 @@
     [parameter(Mandatory=$false)] [String] $ConfigFile = $null,
     [parameter(Mandatory=$false)] [String] $WslSubnet = $null,
     [parameter(Mandatory=$false)] [String] $Name = "WSL",
-    [parameter(Mandatory=$false)] [String] $distribution = $null,
-    [parameter(Mandatory=$false)] [Switch] $force = $False,
-    [parameter(Mandatory=$false)] [Switch] $reboot = $False
+    #[parameter(Mandatory=$false)] [String] $distribution = $null,
+    #[parameter(Mandatory=$false)] [Switch] $reboot = $False,
+    [parameter(Mandatory=$false)] [Switch] $Force = $False
   )
 
+$reboot=false
 $hasConfig = $false
 $defaultConfigFileName="wsl-config.json"
 
@@ -249,7 +249,7 @@ function New-HnsNetwork() {
   # Create this network
   $settings = @"
     {
-      "Name" : "WSL",
+      "Name" : "$Name",
       "Flags": 9,
       "Type": "ICS",
       "IPv6": false,
@@ -374,7 +374,7 @@ function Start-WslBoot() {
   if ($null -ne $wslNetwork) { $wslNetworkJson = $wslNetwork | ConvertTo-Json; Write-Debug "Current wslNetwork: $wslNetworkJson" }
 
   # Create or recreate WSL network if necessary
-  if ($force -Or $null -eq $wslNetwork -Or $wslNetwork.Subnets.AddressPrefix -ne $WslPureSubnet) {
+  if ($Force -Or $null -eq $wslNetwork -Or $wslNetwork.Subnets.AddressPrefix -ne $WslPureSubnet) {
     # To cleanly delete the VMSwitch named WSL along with WSL Network (see: Get-VMSwitch -Name WSL)
     # and to assign correct DNS nameserver after WSL Network is recreated and WSL host is restarted:
     # - Cleanly shutdown all WSL hosts, and
