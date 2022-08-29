@@ -197,7 +197,7 @@ Here you can see simple example of the config file:
                 },
                 {
                     "name":           "WSL-HTTP and HTTPS",
-					     "direction":      "In",
+                    "direction":      "In",
                     "protocol":       "TCP",
                     "localport":      "80, 443",
                     "remoteaddress":  "Any"
