@@ -165,12 +165,12 @@ Main credit for this solution goes to github user **ocroz**. I have used many pa
 5. Modify WSL instances to use static IP addresses and ranges (if you need this, otherwise DHCP works smoothly here)
 6. If you need to modify any Firewall rule, please modify the config file, and then provide actions from the step 2
 7. If you need to remove rule or rules, you can
-- remove all rules in bulk by call
-```bat
+   - remove all rules in bulk by call
+   ```bat
    make-wsl-net-static.ps1 -RemoveFwRules -ConfigFile .\wsl-net.json
    ```
    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; then delete unwanted rules from config and re-create them again by actions from the step 2
-- delete rule in the config file and manually from the Windows Firewall by call [**Remove-NetFirewallRule**](https://docs.microsoft.com/en-us/powershell/module/netsecurity/remove-netfirewallrule)
+    - delete rule in the config file and manually from the Windows Firewall by call [**Remove-NetFirewallRule**](https://docs.microsoft.com/en-us/powershell/module/netsecurity/remove-netfirewallrule)
 
 #### Remarks:
 
