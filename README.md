@@ -186,28 +186,32 @@ Here you can see simple example of the config file:
 ```json
 {
    "Config": {
-        "subnet": "192.168.3.5/24",
-        "rules":  [
-            {
-                    "name":           "WSl-Ping",
-                    "direction":      "In",
-                    "protocol":       "ICMPv4",
-                    "icmptype":       "8:0",
-                    "remoteaddress":  "Any"
-                },
+        "WSL": {
+            "subnet": "172.18.18.1/24",
+            "rules":  [
                 {
-                    "name":           "WSL-HTTP and HTTPS",
-					     "direction":      "In",
-                    "protocol":       "TCP",
-                    "localport":      "80, 443",
-                    "remoteaddress":  "Any"
-                }
-         ]
+                        "name":           "WSl-Ping",
+                        "Direction":      "In",
+                        "protocol":       "ICMPv4",
+                        "icmptype":       "8:0",
+                        "remoteaddress":  "Any"
+                    },
+                    {
+                        "name":           "WSL-WinRM-HTTPS",
+                        "Direction":      "In",
+                        "protocol":       "TCP",
+                        "localport":      "5986",
+                        "remoteaddress":  "Any"
+                    }
+            ]
+        }
     }
 }
 ```
 
 The config file format is straightforward I think so is not necessary to make it's description more rich...
+
+All settings for the network are defined inside the object under the main object with name **Config**. Object name must be same as network object name on the Windows. In example above, it's **"WSL"**
 
 The mandatory property is the **subnet** to specify IP range and GW address.
 

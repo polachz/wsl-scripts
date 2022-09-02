@@ -47,7 +47,7 @@
     [parameter(Mandatory=$false)] [Switch] $Force = $False
   )
 
-$reboot=false
+$reboot=$false
 $hasConfig = $false
 $defaultConfigFileName="wsl-config.json"
 
@@ -137,10 +137,10 @@ function ParseConfigRules {
 
 function CHeckIfFwRuleExists {
     param(
-        [object] $rule
+        [object] $Rule
     )
 
-    $fwRule = Get-NetFirewallRule -DisplayName $rule.Name -ErrorAction SilentlyContinue
+    $fwRule = Get-NetFirewallRule -DisplayName $Rule.Name -ErrorAction SilentlyContinue
     if ($null -eq $fwRule){
         return $false
     }
@@ -150,12 +150,13 @@ function CHeckIfFwRuleExists {
 
 function RebindFwRules {
     param(
-       [object] $rulesArr
+      [parameter(Mandatory=$true)][object] $RulesArray,
+      [parameter(Mandatory=$true)][string] $NetName
     )
 
-    $rulesArr | ForEach-Object {
+    $RulesArray | ForEach-Object {
         if (CHeckIfFwRuleExists $_) {
-            Get-NetFirewallRule -DisplayName $_.Name  |  Get-NetFirewallInterfaceFilter | Set-NetFirewallInterfaceFilter -InterfaceAlias "vEthernet ($Name)"
+            Get-NetFirewallRule -DisplayName $_.Name  |  Get-NetFirewallInterfaceFilter | Set-NetFirewallInterfaceFilter -InterfaceAlias "vEthernet ($NetName)"
              Write-Host "The Fw Rule $($_.Name) has been rebinded to new iface instance"
         } else {
             Write-Host "The Fw Rule $($_.Name) doesn't exist. Can't be rebinded"
@@ -165,31 +166,32 @@ function RebindFwRules {
 
 function UpdateFwRules {
     param(
-       [object] $rulesArr
+      [parameter(Mandatory=$true)][object] $RulesArray,
+      [parameter(Mandatory=$true)][string] $NetName
     )
 
-    $rulesArr | ForEach-Object {
+    $RulesArray | ForEach-Object {
 
       if (CHeckIfFwRuleExists $_ ) {
         if(($_.protocol -eq "ICMPv4") -or ($_.protocol -eq "ICMPv6")){
           Set-NetFirewallRule  -DisplayName $_.Name -Direction $_.Direction `
               -Protocol $_.Protocol -IcmpType $_.IcmpType `
-              -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($Name)" -ErrorAction Stop
+              -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($NetName)" -ErrorAction Stop
         } else {
           Set-NetFirewallRule  -DisplayName $_.Name -Direction $_.Direction `
               -Protocol $_.Protocol -LocalPort $_.LocalPorts `
-              -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($Name)" -ErrorAction Stop
+              -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($NetName)" -ErrorAction Stop
         }
         Write-Host "The Fw Rule $($_.Name) has been updated."
       } else {
         if(($_.protocol -eq "ICMPv4") -or ($_.protocol -eq "ICMPv6")){
           New-NetFirewallRule -DisplayName $_.Name -Direction $_.Direction `
             -Protocol $_.Protocol -IcmpType $_.IcmpType `
-            -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($Name)" -ErrorAction Stop
+            -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($NetName)" -ErrorAction Stop
         } else {
             New-NetFirewallRule -DisplayName $_.Name -Direction $_.Direction `
                 -Protocol $_.Protocol -LocalPort $_.LocalPorts `
-                -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($Name)" -ErrorAction Stop
+                -RemoteAddress $_.RemoteAddress -InterfaceAlias "vEthernet ($NetName)" -ErrorAction Stop
         }
         Write-Host "The Fw Rule $($_.Name) has been created."
       }
@@ -198,10 +200,10 @@ function UpdateFwRules {
 }
 function DeleteFwRules {
     param(
-        [object] $rulesArr
+      [parameter(Mandatory=$true)][object] $RulesArray
     )
 
-    $rulesArr | ForEach-Object {
+    $RulesArray | ForEach-Object {
         if (CHeckIfFwRuleExists $_) {
             Remove-NetFirewallRule  -DisplayName $_.Name
             Write-Host "The Fw Rule $($_.Name) has been deleted."
@@ -213,11 +215,11 @@ function DeleteFwRules {
 
 function New-HnsNetwork() {
   Param(
-    [parameter(Mandatory=$true)] [String] $Name,          # "WSL"
+    [parameter(Mandatory=$true)] [String] $HNSNetName,          # "WSL"
     [parameter(Mandatory=$true)] [String] $AddressPrefix, # "192.168.50.0/24"
     [parameter(Mandatory=$true)] [String] $GatewayAddress # "192.168.50.1"
   )
-  Write-Debug "New-HnsNetwork() with Name $Name, AddressPrefix $AddressPrefix, GatewayAddress $GatewayAddress ..."
+  Write-Debug "New-HnsNetwork() with Name $HNSNetName, AddressPrefix $AddressPrefix, GatewayAddress $GatewayAddress ..."
 
   # Helper functions first
   function Get-HcnMethods() {
@@ -249,7 +251,7 @@ function New-HnsNetwork() {
   # Create this network
   $settings = @"
     {
-      "Name" : "$Name",
+      "Name" : "$HNSNetName",
       "Flags": 9,
       "Type": "ICS",
       "IPv6": false,
@@ -287,16 +289,16 @@ function New-HnsNetwork() {
 
 function Set-VpnToggle() {
   Param(
-    [parameter(Mandatory=$false)] [String] $Name = "WSL",
+    [parameter(Mandatory=$false)] [String] $HNSNetName = "WSL",
     [parameter(Mandatory=$false)] [String] $distribution = $null,
     [parameter(Mandatory=$false)] [Bool] $reboot = $False
   )
   if ($distribution) { $d = "-d" }
-  Write-Debug "Set-VpnToggle() with Name=$Name, reboot=$reboot ..."
+  Write-Debug "Set-VpnToggle() with Name=$HNSNetName, reboot=$reboot ..."
 
   # There must be only one VMSwitch for WSL always
-  if ((Get-VMSwitch -Name $Name -ea "SilentlyContinue").Count -gt 1) {
-    Throw "More than one VMSwitch named $Name exist. Please reboot your computer to clean them all."
+  if ((Get-VMSwitch -Name $HNSNetName -ea "SilentlyContinue").Count -gt 1) {
+    Throw "More than one VMSwitch named $HNSNetName exist. Please reboot your computer to clean them all."
   }
 
   # Get connected VPN
@@ -311,7 +313,7 @@ function Set-VpnToggle() {
 
   # > To adjust Mtu to VPN capability
   $phyMtu = Get-NetAdapter -Physical | Where-Object { $_.status -eq 'Up' } | Get-NetIPInterface -AddressFamily IPv4 | Select-Object -ExpandProperty NlMtu
-  $wslMtu = Get-NetIPInterface -InterfaceAlias "vEthernet ($Name)" -AddressFamily IPv4 | Get-NetIPInterface -AddressFamily IPv4 | Select-Object -ExpandProperty NlMtu
+  $wslMtu = Get-NetIPInterface -InterfaceAlias "vEthernet ($HNSNetName)" -AddressFamily IPv4 | Get-NetIPInterface -AddressFamily IPv4 | Select-Object -ExpandProperty NlMtu
   Write-Debug "phyMtu=$phyMtu,wslMtu=$wslMtu"
 
   # > To patch DNS nameserver under VPN
@@ -330,8 +332,8 @@ function Set-VpnToggle() {
     # Adjust Mtu to VPN capability
     $vpnMtu = $vpnNet | Get-NetIPInterface -AddressFamily IPv4 | Select-Object -ExpandProperty NlMtu
     if ($vpnMtu -lt $phyMtu -and $wslMtu -ne $vpnMtu) {
-      Write-Host "Patching NetIPInterface ""vEthernet ($Name)"" with NlMtu=$vpnMtu ..."
-      Get-NetIPInterface -InterfaceAlias "vEthernet ($Name)" | Set-NetIPInterface -NlMtu $vpnMtu
+      Write-Host "Patching NetIPInterface ""vEthernet ($HNSNetName)"" with NlMtu=$vpnMtu ..."
+      Get-NetIPInterface -InterfaceAlias "vEthernet ($HNSNetName)" | Set-NetIPInterface -NlMtu $vpnMtu
       $wslMtu = $vpnMtu
     }
 
@@ -352,8 +354,8 @@ function Set-VpnToggle() {
     }
 
     if ($wslMtu -ne $phyMtu)  {
-      Write-Host "Patching NetIPInterface ""vEthernet ($Name)"" with NlMtu=$phyMtu ..."
-      Get-NetIPInterface -InterfaceAlias "vEthernet ($Name)" | Set-NetIPInterface -NlMtu $phyMtu
+      Write-Host "Patching NetIPInterface ""vEthernet ($HNSNetName)"" with NlMtu=$phyMtu ..."
+      Get-NetIPInterface -InterfaceAlias "vEthernet ($HNSNetName)" | Set-NetIPInterface -NlMtu $phyMtu
       $wslMtu = $phyMtu
     }
 
@@ -367,10 +369,23 @@ function Set-VpnToggle() {
 }
 
 function Start-WslBoot() {
+
+  Param(
+    [parameter(Mandatory=$true)] [String] $NetName,          # "WSL"
+    [parameter(Mandatory=$true)] [String] $IpAddAndRangeCIDR # "192.168.50.1/24"
+  )
+
   Write-Debug "Start-WslBoot() in debug mode"
 
+  $ParsedSubnet = Split-IPV4Subnet $IpAddAndRangeCIDR
+
+  $WSLNetAddress=$ParsedSubnet.NetworkAddress
+  $WSLBitMask=$ParsedSubnet.MaskBits
+  $WslPureSubnet = "$WSLNetAddress/$WSLBitMask"
+  $GatewayIP = $ParsedSubnet.IPAddress
+
   # Check any existing WSL network
-  $wslNetwork = Get-HnsNetwork | Where-Object { $_.Name -eq $Name }
+  $wslNetwork = Get-HnsNetwork | Where-Object { $_.Name -eq $NetName }
   if ($null -ne $wslNetwork) { $wslNetworkJson = $wslNetwork | ConvertTo-Json; Write-Debug "Current wslNetwork: $wslNetworkJson" }
 
   # Create or recreate WSL network if necessary
@@ -379,9 +394,9 @@ function Start-WslBoot() {
     # and to assign correct DNS nameserver after WSL Network is recreated and WSL host is restarted:
     # - Cleanly shutdown all WSL hosts, and
     # - Cleanly stop all Hyper-V VMs using WSL VMSwitch too
-    Write-Host "Stopping all WSL hosts and all Hyper-V VMs connected to VMSwitch $Name ..."
+    Write-Host "Stopping all WSL hosts and all Hyper-V VMs connected to VMSwitch $NetName ..."
     wsl --shutdown
-    $wslVMs = Get-VM | Where-Object { $_.State -eq 'Running' } | Get-VMNetworkAdapter | Where-Object { $_.SwitchName -eq $Name }
+    $wslVMs = Get-VM | Where-Object { $_.State -eq 'Running' } | Get-VMNetworkAdapter | Where-Object { $_.SwitchName -eq $NetName }
     $wslVMs | ForEach-Object { Stop-VM -Name $_.VMName }
 
     # Delete existing network
@@ -389,15 +404,15 @@ function Start-WslBoot() {
     $wslNetwork | Remove-HnsNetwork
 
     # Check WSL network is deleted
-    $wslNetwork = Get-HnsNetwork | Where-Object { $_.Name -eq $Name }
+    $wslNetwork = Get-HnsNetwork | Where-Object { $_.Name -eq $NetName }
     if ($null -ne $wslNetwork) {
       $wslNetworkJson = $wslNetwork | ConvertTo-Json
       Throw "Current wslNetwork could not be deleted: $wslNetworkJson"
     }
 
     # Destroy WSL network may fail if it happened in the wrong order like if it was done manually
-    if (Get-VMSwitch -Name $Name -ea "SilentlyContinue") {
-      Throw "One more VMSwitch named $Name remains after destroying WSL network. Please reboot your computer to clean it up."
+    if (Get-VMSwitch -Name $NetName -ea "SilentlyContinue") {
+      Write-Warning "One more VMSwitch named $NetName remains after destroying WSL network. Please reboot your computer to clean it up."
     }
 
     # Delete conflicting NetNat
@@ -405,11 +420,11 @@ function Start-WslBoot() {
     $wslNetNat | ForEach-Object {Remove-NetNat -Confirm:$False -Name:$_.Name}
 
     # Create new WSL network
-    New-HnsNetwork -Name $Name -AddressPrefix $WslPureSubnet -GatewayAddress $GatewayIP
+    New-HnsNetwork -HNSNetName $NetName -AddressPrefix $WslPureSubnet -GatewayAddress $GatewayIP
 
     # Switch all misconfigured Hyper-V VMs to newly created Virtual VMSwitch 'WSL'
-    Write-Host "Switching all misconfigured Hyper-V VMs to newly created VMSwitch $Name ..."
-    Get-VM | Get-VMNetworkAdapter | Where-Object { $null -eq $_.SwitchName } | Connect-VMNetworkAdapter -SwitchName $Name
+    Write-Host "Switching all misconfigured Hyper-V VMs to newly created VMSwitch $NetName ..."
+    Get-VM | Get-VMNetworkAdapter | Where-Object { $null -eq $_.SwitchName } | Connect-VMNetworkAdapter -SwitchName $NetName
 
     # Restart all VMs which failed to start due to network misconfiguration
     # as Virtual switch 'WSL' got deleted at Windows power down
@@ -417,13 +432,13 @@ function Start-WslBoot() {
 
     # Restart all previously started Hyper-V VMs connected to VMSwitch WSL
     if ($wslVMs) {
-      Write-Host "Restarting all Hyper-V VMs connected to VMSwitch $Name ..."
+      Write-Host "Restarting all Hyper-V VMs connected to VMSwitch $NetName ..."
       $wslVMs | ForEach-Object { Start-VM -Name $_.VMName }
     }
   }
 
   # Apply changes to WSL network if or if not using VPN
-  $dnsIP,$dnsSearch,$wslMtu = Set-VpnToggle -Name $Name -reboot $reboot
+  $dnsIP,$dnsSearch,$wslMtu = Set-VpnToggle -HNSNetName $NetName -reboot $reboot
 
   # I do not use this approach - better is to configure the WSL instance directly
   # problem may be the VPN MTU - can be modified in the future
@@ -437,12 +452,13 @@ function Start-WslBoot() {
   Write-Host "wsl-boot completed !"
 }
 
+
 if ($PSBoundParameters['Debug']) { $DebugPreference = "Continue" }
 
 # General information
-if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-  Throw "Please run this script with elevated permission (Run As Administrator)"
-}
+#if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
+#  Throw "Please run this script with elevated permission (Run As Administrator)"
+#}
 
 $dst_all_params_array = @('UpdateFwRules', 'RemoveFwRules')
 if ( -not ( CheckMutualExclusiveParam -all_params_array $dst_all_params_array -where_to_find $PSBoundParameters) ) {
@@ -468,45 +484,47 @@ if( ($false -eq $hasConfig) -and ($null -eq $WslSubnet) ){
     Throw "The subnet is not specified. No config file and WSLSubnet parameter either."
 }
 if($hasConfig){
-    $myJson = Get-Content $configFilePath -Raw | ConvertFrom-Json
-    $SconfigSubnet = $myJson.Config.subnet
-    $rulesArray = ParseConfigRules $myjson.Config.rules
+  $myJson = Get-Content $configFilePath -Raw | ConvertFrom-Json
 
-    if($null -eq $SconfigSubnet){
+  if( $WslSubnet){
+    Write-Host "WslSubnet is specified but config file exists! - config file override the WSlSubnet parameter"
+  }
+  $netNames = $myJson.Config  | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
+
+  $netNames | ForEach-Object {
+
+    $Name = $_
+
+    Write-Host "Processing $Name network..."
+    $configSubnet = $myJson.Config.$Name.subnet
+    $cfgRulesArray = ParseConfigRules $myJson.Config.$Name.rules
+
+    if($null -eq $configSubnet){
         Throw "Subnet is not defines in the config file!"
     }
 
     if($UpdateFwRules){
-        Write-Host "Going to create or update WSL FW rules"
-        UpdateFwRules $rulesArray
-        exit
-    }
-    if($RemoveFwRules){
-        Write-Host "Going to delete WSL FW rules"
+        Write-Host "Going to create or update WSL FW rules for network $Name"
+        UpdateFwRules -RulesArray $cfgRulesArray -NetName $Name
+    }elseif($RemoveFwRules){
+        Write-Host "Going to delete WSL FW rules for network $Name"
         DeleteFwRules $rulesArray
-        exit
+    }else{
+
+      Start-WslBoot -NetName  $Name -IpAddAndRangeCIDR $configSubnet
+
+      Write-Host "Going to Rebind WSL FW rules for network $Name"
+      RebindFwRules -RulesArray $cfgRulesArray -NetName $Name
     }
-    if( $WslSubnet){
-        Write-Host "WslSubnet is specified but config file exists! - config file override the WSlSubnet parameter"
-    }
-    $WslSubnet = $SconfigSubnet
+  }
+}else{
+  Start-WslBoot -NetName  $Name -IpAddAndRangeCIDR $WslSubnet
 }
-
-$ParsedSubnet = Split-IPV4Subnet $WslSubnet
-
-$WSLNetAddress=$ParsedSubnet.NetworkAddress
-$WSLBitMask=$ParsedSubnet.MaskBits
-$WslPureSubnet = "$WSLNetAddress/$WSLBitMask"
-$GatewayIP = $ParsedSubnet.IPAddress
-
 
 
 #$d = $null; $distro = "default"; if ($distribution) { $d = "-d"; $distro = $distribution }
 #Write-Host "Booting $distro distribution with WslSubnetPrefix $WslSubnetPrefix, WslHostIP $WslHostIP ..."
 
-Start-WslBoot
 
-if ( $hasConfig){
-  Write-Host "Going to Rebind WSL FW rules"
-  RebindFwRules $rulesArray
-}
+
+
