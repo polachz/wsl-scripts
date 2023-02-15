@@ -38,24 +38,45 @@
 		Mutual Exclusive with UbuntuImageDir
 
 	.Parameter UbuntuImageDir
-		Path where the Ubuntu 20.04 image will be downloaded if not exists
-		And then used for deplyment. Mutual Exclusive with Image parameter
+		Path where the Ubuntu image will be downloaded if not exists 
+		and then used for deplyment. Mutual Exclusive with Image parameter.
 
 	.Parameter ForceDownload
-		If specified, image will be re-dowloaded to UbuntuImageDir even if exists
-		If UbuntuImageDir is not pecified, parameter is ignored
+		If the parameter is specified then image will be re-dowloaded to 
+		UbuntuImageDir and if an old exists, it will be overwritten.
+		If UbuntuImageDir is not specified then parameter is ignored.
 
 	.Parameter BootstrapRootScript
-		If specified then the file is copied to /root folder inside the new fresh
-		image and run as shell script under the root user account.
+		If the parameter is specified then the file is copied to /root folder inside 
+		the new fresh image and run as shell script under the root user account.
 		It allows to provide necessary modifications to deployed image as install
 		required software packages, update image by package manager to latest versions etc...
 
 	.Parameter BootstrapUserScript
-		If specified, script copies this file inside the new fresh image and run
-		it inside the shell as user specified by UserName parameter.
-		It allows to provide necessary modifications to deployed image
-		for the user account, as copied dot files and other configs, etc...
+		If the parameter is specified then the script copies this file inside the new fresh
+		image and run it inside the shell as user specified by UserName parameter. It allows
+		to provide necessary modifications to deployed image for the user account, as copied
+		dot files and other configs, etc...
+
+	.Parameter ResolvConfFile
+		If the parameter is specified then the script copies this file inside the new fresh
+		image and configure the WSL instance to use this file for DNS resolving, plus blocks
+		WSL to regenerate the resolv.conf on each boot.
+
+	.Parameter OverrideResolvConf
+		If the parameter is specified and resolv.conf file exists in the same folder where 
+		the image file exists then the script copies this file inside the new fresh image and
+		configure the WSL instance to use this file for DNS resolving, plus blocks WSL to 
+		regenerate the resolv.conf on each boot.
+	
+	.Parameter RootCaFile
+		If the parameter is specified then the script installs CA from this file to the 
+		WSL instance as next Trusted Root CA (typically it's necessary for ZScaler). 
+
+	.Parameter InstallCA
+		If the parameter is specified and the root_ca.crt file exists in the image
+		directory then the script installs CA from this file to the WSL instance as
+		next Trusted Root CA (typically it's necessary for ZScaler). 
 
 	.Example
 		deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz
@@ -78,16 +99,29 @@ param (
 	[string]$DisksDir,
 	[string]$Image,
 	[string]$UbuntuImageDir,
-	[bool]$ForceDownload=$false,
+	[switch]$ForceDownload,
 	[string]$BootstrapRootScript,
-	[string]$BootstrapUserScript
+	[string]$BootstrapUserScript,
+	[string]$ResolvConfFile,
+	[switch]$OverrideResolvConf,
+	[string]$RootCaFile,
+	[switch]$InstallCA
 
 )
 
 $ubuntu_image_url = 'https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64-wsl.rootfs.tar.gz'
 
-$default_root_bootstrap_script_name = "root_bootstrap"
-$default_user_bootstrap_script_name = "user_bootstrap"
+$default_root_bootstrap_script_fn = "root_bootstrap"
+$default_user_bootstrap_script_fn = "user_bootstrap"
+$default_resolv_conf_fn = "resolv.conf"
+$default_root_ca_fn = "root_ca.crt"
+
+$default_ubuntu_root_bootstrap_script_fn = 'ubuntu_root_bootstrap'
+$default_ubuntu_user_bootstrap_script_fn = 'ubuntu_user_bootstrap'
+
+$image_root_bootstrap_fn = $null
+$image_user_bootstrap_fn = $null
+
 
 
 $CreateDestDir = $False
@@ -96,10 +130,8 @@ $imageUrl = ""
 $imageDir = ""
 $DoDownload = $False
 $ByImageDir = $False
-
-
-$image_root_bootstrap=""
-$image_user_bootstrap=""
+$replaceResolvConf = $false
+$installCAToWSL = $false
 
 enum PackageManagers
 {
@@ -143,15 +175,21 @@ function CopyFileFromWinToWSL {
         [string] $winFilePath,
         [string] $wslFilePath,
         [string] $userName='root',
-        [string] $linuxRights='640'
+        [string] $linuxRights='640',
+	[bool]   $normalizeLineEndings = $false
     )
     if ( -not (Test-Path -Path $winFilePath -PathType Leaf -ErrorAction SilentlyContinue) ){
 		Write-Host "The WinFile ""$winFilePath"" doesn't exist. Can't be copied to WSL" -foregroundcolor red
 		return $False
 	}
-    $temp_file = New-TemporaryFile
-    #to be sure that file is on WSL mapped disk, use temp file in temp folder
-    Copy-Item $winFilePath -Destination $temp_file
+	#to be sure that file is on WSL mapped disk, use temp file in temp folder
+    	$temp_file = New-TemporaryFile
+	if( $false -eq $normalizeLineEndings ){
+		Copy-Item $winFilePath -Destination $temp_file
+	} else{
+		#normalize line ending to linux format (to be sure that all is ok)
+		(Get-Content -path $winFilePath -Raw).Replace("`r`n","`n") | Set-Content -path $temp_file -Force
+	}
     if ( -not (Test-Path -Path $temp_file -PathType Leaf -ErrorAction SilentlyContinue) ){
 	Write-Host "Creation of the Temp file for ""$winFilePath"" failed Can't be copied to WSL" -foregroundcolor red
 	return $False
@@ -169,7 +207,8 @@ function CopyFileFromWinToWSL {
     $mnt_file_path = $mnt_file_path -Replace  ":", ""
     $mnt_file_path = "'/mnt/" + $mnt_file_path +"'"
     #copy file
-    wsl -d $instanceName -u $userName cp $mnt_file_path $wslFilePath
+    Write-Host "copying $wslFilePath"
+    wsl -d $instanceName -u $userName cp -f $mnt_file_path $wslFilePath
     Remove-Item $temp_file
     if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath $wslFilePath) ){
         Write-Host "Copy to the file ""$wslFilePath"" failed." -ForegroundColor Red
@@ -307,6 +346,35 @@ function UpdateImageToLatestPackages {
 	}
 	Write-Host "The ""$instanceName"" has been updated successfully." -ForegroundColor Green
 }
+
+function UpdateTrustedCA {
+    param (
+        [string] $instanceName,
+        [PackageManagers] $manager,
+		[string]  $caFilePath
+    )
+    Write-Host "Installing Trusted Root CA to ""$instanceName""..." -ForegroundColor Blue
+	#at first, get crt file contgent
+	$pemContent = GetFileContentAndPrepareItForEchoToWsl -winFilePath $caFilePath
+    switch($manager)
+    {
+        apt {
+			wsl -d $instanceName -u 'root' -- eval "echo -e '$pemContent' > /usr/local/share/ca-certificates/extern.crt; update-ca-certificates"
+        }
+        dnf {
+			wsl -d $instanceName -u 'root' -- eval "echo -e '$pemContent' > /etc/pki/ca-trust/source/anchors/extern.crt; update-ca-trust"
+        }
+        yum {
+			wsl -d $instanceName -u 'root' -- eval "echo -e '$pemContent' > /etc/pki/ca-trust/source/anchors/extern.crt; update-ca-trust"
+        }
+        unknown {
+            Write-Host "Unknown package manager. Unable to install root CA certificates to ""$instanceName""!" -ForegroundColor Red
+        }
+	}
+	#make things persistent
+	#wsl -d $instanceName
+	Write-Host "Trusted Root CA has been installed sucessfully to ""$instanceName""." -ForegroundColor Green
+}
 function InstallPackageToWSL {
     param (
         [string] $instanceName,
@@ -396,11 +464,7 @@ function CreateLinuxUser {
 	Write-Host "Creating password for user ""$userName""..." -ForegroundColor Blue
 	wsl -d $InstanceName -e sh -c "passwd $userName"
 	AllowSudoForUSer -instanceName $instanceName -userName $userName
-	#create wsl.conf file
-	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
-	$lnx_hostname=$instanceName.ToLower()
-	wsl -d $InstanceName -- eval "echo -e '[user]\ndefault=\""$userName\""\n\n[network]\nhostname=\""$lnx_hostname\""' > /etc/wsl.conf"
-
+	
 	Write-Host "The default user: ""$userName"" created successfully" -ForegroundColor Green
 	Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
 
@@ -423,6 +487,83 @@ function CreateLinuxUser {
 		Write-Host """$userName"" user bootstrapping in the ""$InstanceName"" wsl instance has been finished" -ForegroundColor Green
 	}
 }
+function GetFileContentAndPrepareItForEchoToWsl {
+	param (
+        [string] $winFilePath
+	)
+	$content = Get-Content -path $winFilePath -Raw
+	#//this works only for \n.. due next step
+	$content = $content.Replace("`r`n","`n")
+	$content = $content.Replace("`n","\n")
+	#we will use echo -e 'content' then we have to escape all ' in the content
+	$content = $content.Replace("'","\'")
+	return $content
+
+}
+
+function GenerateWslConf {
+	param (
+        [string] $instanceName,
+        [string] $userName,
+		[bool] $resolvConfOverride,
+		[string] $resolvConfPath
+	)
+
+	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
+	$lnx_hostname = $instanceName.ToLower()
+	if( -not ([string]::IsNullOrEmpty( $userName )) ) {
+		$fileContent =  "[user]\n"
+		$fileContent += "default=\""$userName\""\n\n"
+	}
+	$fileContent += "[network]\n"
+	$fileContent += "hostname=\""$lnx_hostname\""\n"
+	if($True -eq $resolvConfOverride){
+		$fileContent += "generateResolvConf = false\n"
+		$resolvConfContent = GetFileContentAndPrepareItForEchoToWsl -winFilePath $resolvConfPath
+		wsl -d $instanceName -u 'root' -- eval "echo -e '$fileContent' > /etc/wsl.conf; echo -e '$resolvConfContent' > /etc/resolv.conf"
+	} else {
+		wsl -d $instanceName -u 'root' -- eval "echo -e '$fileContent' > /etc/wsl.conf"
+	}
+	#make changes pesistent
+	wsl -t $instanceName
+}
+
+
+
+function FindFileInImageFolder {
+
+	param (
+        [string] $lookupFileName,
+        [string] $imageFolderPath,
+        [string] $parameterDescription
+	)
+	#Try to find script in image folder
+	$possible_path = Join-Path  -Path $imageFolderPath -ChildPath $lookupFileName
+	$file_exists = Test-Path -Path $possible_path -PathType Leaf
+	if ($file_exists -eq $True ){
+		Write-Host "$parameterDescription has been detected at Image Folder" -ForegroundColor Yellow
+		return $possible_path
+	}
+	return $null
+}
+
+function FindFileInScriptFolder {
+
+	param (
+        [string] $lookupFileName,
+        [string] $parameterDescription
+	)
+	#Try to find script in image folder
+	$possible_path = Join-Path  -Path $PSScriptRoot -ChildPath $lookupFileName
+	$file_exists = Test-Path -Path $possible_path -PathType Leaf
+	if ($file_exists -eq $True ){
+		Write-Host "$parameterDescription has been detected at Script Folder" -ForegroundColor Yellow
+		return $possible_path
+	}
+	return $null
+}
+
+
 ##
 ########## main script #####################
 ##
@@ -488,18 +629,8 @@ if ( $PSBoundParameters.ContainsKey('Image') ){
 	$imageDir = $UbuntuImageDir
 	$ByImageDir = $True
 	$image_full_path = ""
-	$possible_script = Join-Path  -Path $PSScriptRoot -ChildPath 'ubuntu_root_bootstrap'
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf
-	#Check if we have right bootstrap files for the image
-	#at same folder as script resides
-	if ($file_exists -eq $True ){
-		$image_root_bootstrap = $possible_script
-	}
-	$possible_script = Join-Path  -Path $PSScriptRoot -ChildPath 'ubuntu_user_bootstrap'
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf
-	if ($file_exists -eq $True ){
-		$image_user_bootstrap = $possible_script
-	}
+	$image_root_bootstrap_fn = $default_ubuntu_root_bootstrap_script_fn
+	$image_user_bootstrap_fn = $default_ubuntu_user_bootstrap_script_fn
 }
 #elseif (in future ....another image option....)
 
@@ -550,25 +681,10 @@ if ( $PSBoundParameters.ContainsKey('BootstrapRootScript') ){
 		FinScript
 	}
 }else{
-	#Try to find script in image folder
-	$possible_script = Join-Path  -Path $imageDir -ChildPath $default_root_bootstrap_script_name
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf
-	if ($file_exists -eq $True ){
-		Write-Host "Root Bootstrap script has been detected at Image Folder" -ForegroundColor Yellow
-		$BootstrapRootScript = $possible_script
-	}else{
-		#Try if default bootstrapping is not deployed with this script for the image
-		if (-not ( [string]::IsNullOrEmpty( $image_root_bootstrap ))){
-			$file_exists = Test-Path -Path $image_root_bootstrap -PathType Leaf
-			if ($file_exists -eq $True ){
-				Write-Host "Default image root user bootstrapping script has been detected at script folder" -ForegroundColor Yellow
-				$BootstrapRootScript = $image_root_bootstrap
-			}else{
-				$BootstrapRootScript = ""
-			}
-		}else{
-			$BootstrapRootScript = ""
-		}
+	$BootstrapRootScript = FindFileInImageFolder -lookupFileName $default_root_bootstrap_script_fn -imageFolderPath $imageDir -parameterDescription 'Root Bootstrap script'
+	if ( ([string]::IsNullOrEmpty( $BootstrapRootScript )) -and ( $true -eq $ByImageDir ) ){
+		#Try if default bootstrapping is not deployed with thi script for the image
+		$BootstrapRootScript = FindFileInScriptFolder -lookupFileName $image_root_bootstrap_fn -parameterDescription 'User Bootstrap script'
 	}
 }
 if ( $PSBoundParameters.ContainsKey('BootstrapUserScript') ){
@@ -577,28 +693,49 @@ if ( $PSBoundParameters.ContainsKey('BootstrapUserScript') ){
 		FinScript
 	}
 }else{
-	#Try to find script in image folder
-	$possible_script = Join-Path  -Path $imageDir -ChildPath $default_user_bootstrap_script_name
-	$file_exists = Test-Path -Path $possible_script -PathType Leaf
-	if ($file_exists -eq $True ){
-		Write-Host "User Bootstrap script has been detected at Image Folder" -ForegroundColor Yellow
-		$BootstrapUserScript = $possible_script
-	}else{
+	$BootstrapUserScript = FindFileInImageFolder -lookupFileName $default_user_bootstrap_script_fn -imageFolderPath $imageDir -parameterDescription 'User Bootstrap script'
+	
+	if ( ([string]::IsNullOrEmpty( $BootstrapUserScript )) -and ( $true -eq $ByImageDir ) ){
 		#Try if default bootstrapping is not deployed with thi script for the image
-		if (-not ( [string]::IsNullOrEmpty( $image_user_bootstrap ))){
-			$file_exists = Test-Path -Path $image_user_bootstrap -PathType Leaf
-			if ($file_exists -eq $True ){
-				Write-Host "Default image user bootstrapping script has been detected at script folder" -ForegroundColor Yellow
-				$BootstrapUserScript = $image_user_bootstrap
-			}else{
-				$BootstrapUserScript = ""
-			}
-		} else {
-			$BootstrapUserScript = ""
+		$BootstrapUserScript = FindFileInScriptFolder -lookupFileName $image_user_bootstrap_fn -parameterDescription 'User Bootstrap script'
+	}
+}
+
+if ( $PSBoundParameters.ContainsKey('ResolvConfFile') ){
+	if ( -not (Test-Path -Path $ResolvConfFile -PathType Leaf) ){
+		Write-Host "The resolv.conf file ""$ResolvConfFile"" does not exist!!" -foregroundcolor red
+		FinScript
+	}
+	$replaceResolvConf = $True
+}else{
+	if( $True -eq $OverrideResolvConf){
+		$ResolvConfFile = FindFileInImageFolder -lookupFileName $default_resolv_conf_fn -imageFolderPath $imageDir -parameterDescription 'resolv.conf'
+		if ( [string]::IsNullOrEmpty( $ResolvConfFile ) ){
+			Write-Host "OverrideResolvConf specified but the resolv.conf file does not exist at Image folder!!" -foregroundcolor red
+			FinScript
+		}else{
+			$replaceResolvConf = $True
 		}
 	}
 }
 
+if ( $PSBoundParameters.ContainsKey('RootCaFile') ){
+	if ( -not (Test-Path -Path $RootCaFile -PathType Leaf) ){
+		Write-Host "The Root CA file ""$RootCaFile"" does not exist!!" -foregroundcolor red
+		FinScript
+	}
+	$installCAToWSL = $True
+}else{
+	if( $True -eq $InstallCA){
+		$RootCaFile = FindFileInImageFolder -lookupFileName $default_root_ca_fn -imageFolderPath $imageDir -parameterDescription 'Root CA'
+		if ( [string]::IsNullOrEmpty( $RootCaFile ) ){
+			Write-Host "InstallCA specified but the ""$default_root_ca_fn"" file does not exist at Image folder!!" -foregroundcolor red
+			FinScript
+		}else{
+			$installCAToWSL = $True
+		}
+	}
+}
 
 #now all pieces are in place
 if ( $CreateDestDir ){
@@ -618,8 +755,15 @@ Write-Host "The WSL Instance ""$InstanceName"" has been created successfuly"
 
 #start the instance to allow next processing
 wsl -d $InstanceName echo "Starting WSL $InstanceName.."
+#Create wsl.conf
+GenerateWslConf -instanceName $InstanceName -userName $UserName -resolvConfOverride $replaceResolvConf -resolvConfPath $ResolvConfFile
 
 $package_manager = DetectPackageManager -instanceName $InstanceName
+
+if( $true -eq $installCAToWSL) {
+	UpdateTrustedCA -instanceName $InstanceName -manager $package_manager -caFilePath $RootCaFile
+}
+
 UpdateImageToLatestPackages -instanceName $InstanceName -manager $package_manager
 #And now, restart the WSL instence. We had (who kbows why) missing /bin/mount
 #binary on the Fedora 35 without this restart step...
