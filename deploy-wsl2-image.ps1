@@ -208,16 +208,14 @@ function CopyFileFromWinToWSL {
     $mnt_file_path = "'/mnt/" + $mnt_file_path +"'"
     #copy file
     Write-Host "copying $wslFilePath"
-    wsl -d $instanceName -u $userName cp -f $mnt_file_path $wslFilePath
+    wsl -d $instanceName -u $userName -- cp -f $mnt_file_path $wslFilePath
     Remove-Item $temp_file
     if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath $wslFilePath) ){
         Write-Host "Copy to the file ""$wslFilePath"" failed." -ForegroundColor Red
         return $False
     }
     #change rights
-    #$script = "chmod $linuxRights $wslFilePath"
-    #wsl -d $instanceName -u $userName -e sh -c "$script"
-	wsl -d $instanceName -u $userName chmod $linuxRights $wslFilePath
+	wsl -d $instanceName -u $userName -- chmod $linuxRights $wslFilePath
     return $True
 }
 
@@ -261,7 +259,7 @@ function CheckIfLinuxBinaryExists {
         [string] $instanceName,
 		[string] $binaryName
 	)
-    $test_output = wsl -d $instanceName -u "root" whereis -b $binaryName 2>&1
+    $test_output = wsl -d $instanceName -u 'root' -- whereis -b $binaryName 2>&1
     $exe_exists = $test_output -match "/$binaryName"
 	return $exe_exists
 }
@@ -335,10 +333,10 @@ function UpdateImageToLatestPackages {
 			wsl -d $instanceName -u 'root' -e sh -c "apt-get -y update && apt-get -y upgrade"
         }
         dnf {
-			wsl -d $instanceName -u 'root' dnf -y update
+			wsl -d $instanceName -u 'root' -- dnf -y update
         }
         yum {
-			wsl -d $instanceName -u 'root' yum -y update
+			wsl -d $instanceName -u 'root' -- yum -y update
         }
         unknown {
             Write-Host "Unknown package manager. Unable to update the ""$instanceName"" to latest packages" -ForegroundColor Red
@@ -372,7 +370,7 @@ function UpdateTrustedCA {
         }
 	}
 	#make things persistent
-	#wsl -d $instanceName
+	wsl -t $instanceName
 	Write-Host "Trusted Root CA has been installed sucessfully to ""$instanceName""." -ForegroundColor Green
 }
 function InstallPackageToWSL {
@@ -386,15 +384,15 @@ function InstallPackageToWSL {
     {
         apt {
 			Write-Host "Installing the ""$packageName"" by apt-get" -ForegroundColor Blue
-			wsl -d $instanceName -u 'root' apt-get -y install $packageName
+			wsl -d $instanceName -u 'root' -- apt-get -y install $packageName
         }
         dnf {
 			Write-Host "Installing the ""$packageName"" by dnf" -ForegroundColor Blue
-			wsl -d $instanceName -u 'root' dnf -y install $packageName
+			wsl -d $instanceName -u 'root' -- dnf -y install $packageName
         }
         yum {
 			Write-Host "Installing the ""$packageName"" by yum" -ForegroundColor Blue
-			wsl -d $instanceName -u 'root' yum -y install $packageName
+			wsl -d $instanceName -u 'root' -- yum -y install $packageName
         }
         unknown {
             Write-Host "Unknown package manager. Unable to install ""$packageName""." -ForegroundColor Red
@@ -444,7 +442,7 @@ function CreateLinuxUser {
 	}
 	if(($manager -eq [PackageManagers]::dnf)-or ($manager -eq [PackageManagers]::yum)){
 		if( -Not (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath '/usr/share/cracklib/pw_dict.pwd') ){
-			wsl -d $instanceName -u 'root' dnf -y install 'cracklib-dicts'
+			wsl -d $instanceName -u 'root' -- dnf -y install 'cracklib-dicts'
 		}
     }
 
@@ -455,18 +453,18 @@ function CreateLinuxUser {
 			return $False
 		}
 	}
-	wsl -d $InstanceName -e sh -c "useradd -m -s /bin/bash $userName"
+	wsl -d $InstanceName -u 'root' -e sh -c "useradd -m -s /bin/bash $userName"
 
 	if( -not (CheckIfLinuxUserExists -instanceName $InstanceName -userName $userName) ) {
 		Write-Host "The default user: ""$userName"" was not created!" -ForegroundColor Red
 		return $False
 	}
 	Write-Host "Creating password for user ""$userName""..." -ForegroundColor Blue
-	wsl -d $InstanceName -e sh -c "passwd $userName"
+	wsl -d $InstanceName -u 'root' -e sh -c "passwd $userName"
 	AllowSudoForUSer -instanceName $instanceName -userName $userName
 	
 	Write-Host "The default user: ""$userName"" created successfully" -ForegroundColor Green
-	Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
+	
 
 	######### This is implementation not dependent on echo -e  -   commented out for now      ###
 	######### Preserved if will be necessary on a distro where echo -e will not work properly ###
@@ -526,6 +524,13 @@ function GenerateWslConf {
 	}
 	#make changes pesistent
 	wsl -t $instanceName
+	if ( $true -eq (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath "/etc/wsl.conf") ){
+		Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
+		return $True
+	} else {
+		Write-Host "Unable to create wsl.conf file at instance ""$InstanceName""!!" -foregroundcolor red
+		return $False
+	}
 }
 
 
@@ -754,9 +759,12 @@ wsl --import $InstanceName $Destination $image_full_path
 Write-Host "The WSL Instance ""$InstanceName"" has been created successfuly"
 
 #start the instance to allow next processing
-wsl -d $InstanceName echo "Starting WSL $InstanceName.."
+wsl -d $InstanceName -- echo "Starting WSL $InstanceName.."
 #Create wsl.conf
-GenerateWslConf -instanceName $InstanceName -userName $UserName -resolvConfOverride $replaceResolvConf -resolvConfPath $ResolvConfFile
+$result = GenerateWslConf -instanceName $InstanceName -userName $UserName -resolvConfOverride $replaceResolvConf -resolvConfPath $ResolvConfFile
+if($False -eq $result){
+	FinScript
+}
 
 $package_manager = DetectPackageManager -instanceName $InstanceName
 
