@@ -793,4 +793,4 @@ wsl -t $InstanceName
 Write-Host ""
 Write-Host "Welcome in your fresh Linux box..." -ForegroundColor Blue
 Write-Host ""
-wsl -d $InstanceName
+wsl -d $InstanceName -u $UserName --cd ~
