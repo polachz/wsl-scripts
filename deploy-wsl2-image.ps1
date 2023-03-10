@@ -507,7 +507,7 @@ function GenerateWslConf {
 		[string] $resolvConfPath
 	)
 
-	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
+	
 	$lnx_hostname = $instanceName.ToLower()
 	if( -not ([string]::IsNullOrEmpty( $userName )) ) {
 		$fileContent =  "[user]\n"
@@ -517,20 +517,29 @@ function GenerateWslConf {
 	$fileContent += "hostname=\""$lnx_hostname\""\n"
 	if($True -eq $resolvConfOverride){
 		$fileContent += "generateResolvConf = false\n"
-		$resolvConfContent = GetFileContentAndPrepareItForEchoToWsl -winFilePath $resolvConfPath
-		wsl -d $instanceName -u 'root' -- eval "echo -e '$fileContent' > /etc/wsl.conf; echo -e '$resolvConfContent' > /etc/resolv.conf"
-	} else {
-		wsl -d $instanceName -u 'root' -- eval "echo -e '$fileContent' > /etc/wsl.conf"
 	}
+	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
+	wsl -d $instanceName -u 'root' -- eval "echo -e '$fileContent' > /etc/wsl.conf"
 	#make changes pesistent
 	wsl -t $instanceName
-	if ( $true -eq (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath "/etc/wsl.conf") ){
-		Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
-		return $True
-	} else {
-		Write-Host "Unable to create wsl.conf file at instance ""$InstanceName""!!" -foregroundcolor red
+	if ( $False -eq (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath "/etc/wsl.conf") ){
+		Write-Host "Unable to create /etc/wsl.conf file at instance ""$InstanceName""!!" -foregroundcolor red
 		return $False
 	}
+	if($True -eq $resolvConfOverride){
+		Write-Host "Creating /etc/resolv.conf file..." -ForegroundColor Blue
+		$resolvConfContent = GetFileContentAndPrepareItForEchoToWsl -winFilePath $resolvConfPath
+		
+		wsl -d $instanceName -u 'root' -- eval "echo -e '$resolvConfContent' > /etc/resolv.conf"
+		#make changes pesistent
+		wsl -t $instanceName
+		if ( $false -eq (CheckIfLinuxFileOnPathExists -instanceName $instanceName -filePath "/etc/wsl.conf") ){
+			Write-Host "Unable to create /etc/resolv.conf file at instance ""$InstanceName""!!" -foregroundcolor red
+			return $False	
+		}
+	} 
+	Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
+	return $True
 }
 
 
