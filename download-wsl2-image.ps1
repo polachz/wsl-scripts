@@ -129,20 +129,61 @@ if(Test-Path -Path $gzipImgPath -PathType Leaf){
     }
 }
 
+
+$arch="amd64"
+
 Write-Host "Downloading Docker image ""$Image::$Tag""..."
 Write-Host ""
 $authUrl="https://auth.docker.io/token?service=registry.docker.io&scope=repository:" +$Image + ":pull"
+$manifestsUrl= "https://registry-1.docker.io:/v2/$Image/manifests/$Tag"
 
 $response=Invoke-RestMethod -Uri $authUrl
 
 $token = $response.token;
-#Get Image descriptor. We are interested in blobs list
-$header= @{
-    "Authorization" = "Bearer $token" 
+# Specify headers for required content
+# It will specify script accepted content
+#to the Docker registry
+
+$manifestListHeader= @{
+    "Authorization" = "Bearer $token"
+    "Accept" = "application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json" 
 }
-$layers=Invoke-RestMethod -Headers $header -Uri "https://registry-1.docker.io:/v2/$Image/manifests/$Tag"
+
+$manifestHeader= @{
+    "Authorization" = "Bearer $token"
+    "Accept" = "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" 
+}
+
+$imageBlobsHeader= @{
+    "Authorization" = "Bearer $token"
+}
+
+$manifests = Invoke-RestMethod -Headers $manifestListHeader -Uri $manifestsUrl -UseBasicParsing
+$selectedManifest = $manifests  `
+       | ForEach-Object {  `
+               $_.manifests `
+               | Where-Object { `
+                    $_.platform.architecture -eq $arch `
+                    -and  $_.platform.os -eq "linux" `
+               } | Select-Object -ExpandProperty digest
+        }
+if ($selectedManifest) {
+    $url_manifest = "https://registry-1.docker.io:/v2/$Image/manifests/$selectedManifest"
+}
+
+$manifestData=Invoke-RestMethod -Headers $manifestHeader -Uri $url_manifest -UseBasicParsing
+
+$layers = $manifestData.layers.digest -replace "sha256:", ""
+
+if ( $layers.Count -eq 0) {
+    Write-Error "Could not parse digest information from $url_manifest"
+    return
+}
+
+
 #Extract names of blob (sha256:xxyyzz......)
-$allBlobSums= $layers.fsLayers | ForEach-Object -MemberName blobSum
+#$allBlobSums= $layers.fsLayers | ForEach-Object -MemberName blobSum
+$allBlobSums= $layers
 #sometimes duplicates are in the list (Fedora32 for example) then try to kick them off
 #Layers are applied in specific order then we have to kick off all previous duplicates
 #and leave only the latest - reverse the array
@@ -170,14 +211,19 @@ foreach( $blobName in $uniqueBlobs) {
     $layerName = $blobName.Substring($pos+1)
     $tarName = $layerName + ".tar"
     $outName = $tarName + ".gz"
-    $outName = Join-Path $workDir $outName
-    $tarFile = Join-Path $workDir $tarName
-    #$tarList += $tarFile
+    $outFile = Join-Path $workDir $outName
+    
     $tarList += $tarName
-    Invoke-WebRequest -Headers $header -OutFile $outName -Uri "https://registry-1.docker.io/v2/$Image/blobs/$blobName"
-    UnpackGzipFile -infile $outName
-    #Remove gz file, leave tar only
-    Remove-Item -Path $outName
+    $blobUri="https://registry-1.docker.io/v2/$Image/blobs/sha256:$blobName"
+    Invoke-WebRequest -Headers $imageBlobsHeader -OutFile $outFile -Uri $blobUri
+    if (-Not (Test-Path -Path $outFile -PathType Leaf)){
+        Write-Host "The folder ""$outName"" doesn't exist!" -ForegroundColor Red
+        FinScript
+    }
+    # Unpack GZip, we need pure tar for next processing
+    UnpackGzipFile -infile $outFile
+    # Remove gz file, leave tar only
+    Remove-Item -Path $outFile
 }
 $ProgressPreference = 'Continue'
 
