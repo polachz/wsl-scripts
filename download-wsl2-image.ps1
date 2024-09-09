@@ -96,6 +96,49 @@ Function PackGzipFile{
     $outputData.Close()
     $inputData.Close()
 }
+
+Function ProcessManifestSchemaVersion1{
+    Param(
+        $manifest
+        )
+
+        $layers= $manifest.fsLayers `
+         | ForEach-Object -MemberName blobSum `
+         | ForEach-Object {  $_.Substring(7)  }
+            # We need to remove sha256: prefix to download layers
+            # Easiest way is here to use substring method
+        return $layers
+}
+
+Function ProcessManifestSchemaVersion2{
+    Param(
+        $manifest
+    )
+
+    $manifestHeader= @{
+        "Authorization" = "Bearer $token"
+        "Accept" = "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" 
+    }
+
+    $selectedManifest = $manifests  `
+    | ForEach-Object {  `
+            $_.manifests `
+            | Where-Object { `
+                    $_.platform.architecture -eq $arch `
+                    -and  $_.platform.os -eq "linux" `
+            } | Select-Object -ExpandProperty digest
+        }
+    if ($selectedManifest) {
+        $url_manifest = "https://registry-1.docker.io:/v2/$Image/manifests/$selectedManifest"
+    }
+ 
+    $manifestData=Invoke-RestMethod -Headers $manifestHeader -Uri $url_manifest -UseBasicParsing
+ 
+    $layers = $manifestData.layers.digest -replace "sha256:", ""    
+
+    return $layers
+}
+
 #For better readability
 Write-Host ""
 
@@ -149,31 +192,21 @@ $manifestListHeader= @{
     "Accept" = "application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json" 
 }
 
-$manifestHeader= @{
-    "Authorization" = "Bearer $token"
-    "Accept" = "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" 
-}
 
 $imageBlobsHeader= @{
     "Authorization" = "Bearer $token"
 }
 
 $manifests = Invoke-RestMethod -Headers $manifestListHeader -Uri $manifestsUrl -UseBasicParsing
-$selectedManifest = $manifests  `
-       | ForEach-Object {  `
-               $_.manifests `
-               | Where-Object { `
-                    $_.platform.architecture -eq $arch `
-                    -and  $_.platform.os -eq "linux" `
-               } | Select-Object -ExpandProperty digest
-        }
-if ($selectedManifest) {
-    $url_manifest = "https://registry-1.docker.io:/v2/$Image/manifests/$selectedManifest"
+if( $manifests.schemaVersion -eq 1 ){
+    $layers = ProcessManifestSchemaVersion1 $manifests
+} elseif ($manifests.schemaVersion -eq 2){
+    $layers = ProcessManifestSchemaVersion2 $manifests
+}else{
+    Write-Error "Unknown manifest schema version !!"
+    FinScript
 }
 
-$manifestData=Invoke-RestMethod -Headers $manifestHeader -Uri $url_manifest -UseBasicParsing
-
-$layers = $manifestData.layers.digest -replace "sha256:", ""
 
 if ( $layers.Count -eq 0) {
     Write-Error "Could not parse digest information from $url_manifest"
