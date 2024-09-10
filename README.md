@@ -76,7 +76,7 @@ Script also allows bootstrapping of the deployed image by specified scripts. The
    </pre>
    The InstanceName folder can already exists, but the ext4.vhdx file can't exist in the folder. otherwise the script generates error and stop.
 
-* **Image** (Mutual exclusive with _UbuntuImageDir_) - Path to the image file from which the WSL Instance will be deployed. 
+* **Image** (Mutual exclusive with _UbuntuImageDir_) - Path to the Docker Image file from which the WSL Instance will be deployed. 
 * **UbuntuImageDir** (Mutual exclusive with _Image_) - Path where the Ubuntu 20.04 image will be downloaded if not already exists and then used for deployment. This allows easy unattended Ubuntu 20.04 deployment without MS Store assistance
 * **ForceDownload** Makes sense only for Well-known images (As for Ubuntu 20.04 for example). Otherwise is ignored. If specified then the Well-known image will be re-downloaded from distribution point even if already exists in the Image folder.
 * **BootstrapRootScript** If specified then the file is copied to /root folder inside the new fresh image and run as shell script under the root user account. It allows to provide necessary modifications to deployed image as install required software packages, update image by package manager to latest versions etc...
@@ -88,13 +88,13 @@ Script also allows bootstrapping of the deployed image by specified scripts. The
 
 ##### Bootstrapping
 
-The deployment process can be customized by run of the bootstrap script(s). The script will run inside the deployed image and it can be run as root script or user script. Is possible to run only one or both bootstrap scripts during the deployment process.
+The deployment process can be customized by run of the bootstrap script(s). The script will run inside the deployed WSL instance and it can be run as root script or user script. Is possible to run only one or both bootstrap scripts during the deployment process.
 
 The Bootstrap script can be specified by three ways
 
 1. Explicitly by parameter (*BootstrapRootScript, *BootstrapUserScript)
 
-1. Can be placed to same folder as image and have to have specific filename:
+1. Can be placed to same folder as Docker Image with specific filename:
    * **root_bootstrap** For bootstrap script run as root
    * **user_bootstrap** For bootstrap script run as user with name specified by UserName parameter
 
@@ -102,7 +102,13 @@ The Bootstrap script can be specified by three ways
 
 1. For Well Known image ( UbuntuImageDir ) the default script located in the same directory as the main PowerShell script can be used (ubuntu_root_bootstrap) This option is valid only for well known image as the Ubuntu and this script for Ubuntu is member file of the repository.
 
------------------------------------------------------------------------------------------------------------------------------------------------------------------
+##### On Boot WSL Script
+
+Support for script run on each boot of the WSL instance has been added. It allows to start required services, or apply required fixes for correct WSL Instance run.
+
+To enable this feature, just place the file **_run_on_wsl_boot.sh_** to the same folder where Docker Image is stored.
+
+-----------------------------------
 
 ### Static WSL Subnet Script
 

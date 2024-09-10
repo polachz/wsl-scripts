@@ -116,6 +116,9 @@ $default_user_bootstrap_script_fn = "user_bootstrap"
 $default_resolv_conf_fn = "resolv.conf"
 $default_root_ca_fn = "root_ca.crt"
 
+$on_wsl_boot_script_fn = 'run_on_wsl_boot.sh'
+$on_wsl_boot_script_wsl_fpath ="/etc/$on_wsl_boot_script_fn"
+
 $default_ubuntu_root_bootstrap_script_fn = 'ubuntu_root_bootstrap'
 $default_ubuntu_user_bootstrap_script_fn = 'ubuntu_user_bootstrap'
 
@@ -130,8 +133,9 @@ $imageUrl = ""
 $imageDir = ""
 $DoDownload = $False
 $ByImageDir = $False
-$replaceResolvConf = $false
-$installCAToWSL = $false
+$replaceResolvConf = $False
+$installCAToWSL = $False
+$copyWslOnBootScript = $False
 
 enum PackageManagers
 {
@@ -503,8 +507,9 @@ function GenerateWslConf {
 	param (
         [string] $instanceName,
         [string] $userName,
-		[bool] $resolvConfOverride,
-		[string] $resolvConfPath
+		[bool]   $resolvConfOverride,
+		[string] $resolvConfPath,
+		[bool]   $wslBootScript
 	)
 
 	
@@ -518,6 +523,11 @@ function GenerateWslConf {
 	if($True -eq $resolvConfOverride){
 		$fileContent += "generateResolvConf = false\n"
 	}
+	if($True -eq $wslBootScript){
+		$fileContent += "[boot]\n"
+		$fileContent += "command= $on_wsl_boot_script_wsl_fpath\n"
+
+	} 
 	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
 	wsl -d $instanceName -u 'root' -- eval "echo -e '$fileContent' > /etc/wsl.conf"
 	#make changes pesistent
@@ -537,8 +547,10 @@ function GenerateWslConf {
 			Write-Host "Unable to create /etc/resolv.conf file at instance ""$InstanceName""!!" -foregroundcolor red
 			return $False	
 		}
-	} 
+	}
 	Write-Host "The hostname: ""$lnx_hostname"" has been set successfully" -ForegroundColor Green
+	
+	
 	return $True
 }
 
@@ -750,7 +762,13 @@ if ( $PSBoundParameters.ContainsKey('RootCaFile') ){
 		}
 	}
 }
+$on_wsl_boot_script_win_fpath = FindFileInImageFolder -lookupFileName $on_wsl_boot_script_fn `
+                                                      -imageFolderPath $imageDir `
+													  -parameterDescription 'On Boot WSL script'
 
+if ( -not ([string]::IsNullOrEmpty( $on_wsl_boot_script_win_fpath )) ){
+	$copyWslOnBootScript = $True
+}
 #now all pieces are in place
 if ( $CreateDestDir ){
 	#Try to create folder folder
@@ -770,16 +788,33 @@ Write-Host "The WSL Instance ""$InstanceName"" has been created successfuly"
 #start the instance to allow next processing
 wsl -d $InstanceName -- echo "Starting WSL $InstanceName.."
 #Create wsl.conf
-$result = GenerateWslConf -instanceName $InstanceName -userName $UserName -resolvConfOverride $replaceResolvConf -resolvConfPath $ResolvConfFile
+Write-Host "Generating wsl.conf file..."
+$result = GenerateWslConf -instanceName $InstanceName `
+                          -userName $UserName `
+						  -resolvConfOverride $replaceResolvConf `
+						  -resolvConfPath $ResolvConfFile `
+						  -wslBootScript $copyWslOnBootScript
+
 if($False -eq $result){
 	FinScript
 }
-
+if( $true -eq $copyWslOnBootScript) {
+	Write-Host "Copying WSL On Boot Script to WSL Instance file..."
+	$copied = CopyFileFromWinToWSL -instanceName $instanceName `
+	                               -winFilePath $on_wsl_boot_script_win_fpath `
+		                           -wslFilePath $on_wsl_boot_script_wsl_fpath `
+								   -userName 'root' `
+								   -linuxRights '754'
+	if($False -eq $copied){
+		FinScript
+	}
+}
 $package_manager = DetectPackageManager -instanceName $InstanceName
 
 if( $true -eq $installCAToWSL) {
 	UpdateTrustedCA -instanceName $InstanceName -manager $package_manager -caFilePath $RootCaFile
 }
+wsl -t $InstanceName
 
 UpdateImageToLatestPackages -instanceName $InstanceName -manager $package_manager
 #And now, restart the WSL instence. We had (who kbows why) missing /bin/mount
