@@ -77,6 +77,9 @@
 		If the parameter is specified and the root_ca.crt file exists in the image
 		directory then the script installs CA from this file to the WSL instance as
 		next Trusted Root CA (typically it's necessary for ZScaler). 
+	
+	.Parameter DisableSystemd
+		If the parameter is specified, then WSL support for systemd will be disabled
 
 	.Example
 		deploy-wsl2-image.ps1 Ubuntu22 linux_user -DisksDir e:\WSL\Disks -Image E:\WSL\Ubu.tar.gz
@@ -105,7 +108,8 @@ param (
 	[string]$ResolvConfFile,
 	[switch]$OverrideResolvConf,
 	[string]$RootCaFile,
-	[switch]$InstallCA
+	[switch]$InstallCA,
+	[switch]$DisableSystemd
 
 )
 
@@ -516,18 +520,22 @@ function GenerateWslConf {
 	$lnx_hostname = $instanceName.ToLower()
 	if( -not ([string]::IsNullOrEmpty( $userName )) ) {
 		$fileContent =  "[user]\n"
-		$fileContent += "default=\""$userName\""\n\n"
+		$fileContent += "default = \""$userName\""\n\n"
 	}
 	$fileContent += "[network]\n"
-	$fileContent += "hostname=\""$lnx_hostname\""\n"
+	$fileContent += "hostname = \""$lnx_hostname\""\n"
 	if($True -eq $resolvConfOverride){
 		$fileContent += "generateResolvConf = false\n"
 	}
-	if($True -eq $wslBootScript){
+	if($True -eq $wslBootScript -or $False -eq $DisableSystemd) {
 		$fileContent += "[boot]\n"
-		$fileContent += "command= $on_wsl_boot_script_wsl_fpath\n"
-
-	} 
+		if($False -eq $DisableSystemd){
+			$fileContent += "systemd = true\n"
+		} 
+		if($True -eq $wslBootScript){
+			$fileContent += "command = $on_wsl_boot_script_wsl_fpath\n"	
+		} 
+	}
 	Write-Host "Creating /etc/wsl.conf file..." -ForegroundColor Blue
 	wsl -d $instanceName -u 'root' -- eval "echo -e '$fileContent' > /etc/wsl.conf"
 	#make changes pesistent
@@ -817,7 +825,7 @@ if( $true -eq $installCAToWSL) {
 wsl -t $InstanceName
 
 UpdateImageToLatestPackages -instanceName $InstanceName -manager $package_manager
-#And now, restart the WSL instence. We had (who kbows why) missing /bin/mount
+#And now, restart the WSL instance. We had (who kbows why) missing /bin/mount
 #binary on the Fedora 35 without this restart step...
 wsl -t $InstanceName
 #Now continue with bootstrap
