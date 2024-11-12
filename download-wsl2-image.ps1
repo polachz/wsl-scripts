@@ -119,20 +119,26 @@ Function ProcessManifestSchemaVersion2{
         "Authorization" = "Bearer $token"
         "Accept" = "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" 
     }
-
-    $selectedManifest = $manifests  `
-    | ForEach-Object {  `
-            $_.manifests `
-            | Where-Object { `
-                    $_.platform.architecture -eq $arch `
-                    -and  $_.platform.os -eq "linux" `
-            } | Select-Object -ExpandProperty digest
+    if ($manifest.mediaType -eq "application/vnd.docker.distribution.manifest.list.v2+json"){ 
+        $selectedManifest = $manifest  `
+        | ForEach-Object {  `
+                $_.manifests `
+                | Where-Object { `
+                        $_.platform.architecture -eq $arch `
+                        -and  $_.platform.os -eq "linux" `
+                } | Select-Object -ExpandProperty digest
+            
         }
-    if ($selectedManifest) {
-        $url_manifest = "https://registry-1.docker.io:/v2/$Image/manifests/$selectedManifest"
+        if ($selectedManifest) {
+            $url_manifest = "https://registry-1.docker.io/v2/$Image/manifests/$selectedManifest"
+        }
+        $manifestData=Invoke-RestMethod -Headers $manifestHeader -Uri $url_manifest -UseBasicParsing
+    } elseif ($manifest.mediaType -eq "application/vnd.docker.distribution.manifest.v2+json"){ 
+        $manifestData = $manifest
+    }else{
+        Write-Error "Unknown manifest type '$manifest.mediaType' !!"
+        FinScript
     }
- 
-    $manifestData=Invoke-RestMethod -Headers $manifestHeader -Uri $url_manifest -UseBasicParsing
  
     $layers = $manifestData.layers.digest -replace "sha256:", ""    
 
@@ -175,10 +181,10 @@ if(Test-Path -Path $gzipImgPath -PathType Leaf){
 
 $arch="amd64"
 
-Write-Host "Downloading Docker image ""$Image::$Tag""..."
+Write-Host "Downloading Docker image ""${Image}:${Tag}""..."
 Write-Host ""
 $authUrl="https://auth.docker.io/token?service=registry.docker.io&scope=repository:" +$Image + ":pull"
-$manifestsUrl= "https://registry-1.docker.io:/v2/$Image/manifests/$Tag"
+$manifestsUrl= "https://registry-1.docker.io/v2/$Image/manifests/$Tag"
 
 $response=Invoke-RestMethod -Uri $authUrl
 
@@ -197,13 +203,14 @@ $imageBlobsHeader= @{
     "Authorization" = "Bearer $token"
 }
 
-$manifests = Invoke-RestMethod -Headers $manifestListHeader -Uri $manifestsUrl -UseBasicParsing
-if( $manifests.schemaVersion -eq 1 ){
-    $layers = ProcessManifestSchemaVersion1 $manifests
-} elseif ($manifests.schemaVersion -eq 2){
-    $layers = ProcessManifestSchemaVersion2 $manifests
+$manifest = Invoke-RestMethod -Headers $manifestListHeader -Uri $manifestsUrl -UseBasicParsing
+
+if( $manifest.schemaVersion -eq 1 ){
+    $layers = ProcessManifestSchemaVersion1 $manifest
+} elseif ($manifest.schemaVersion -eq 2){
+    $layers = ProcessManifestSchemaVersion2 $manifest
 }else{
-    Write-Error "Unknown manifest schema version !!"
+    Write-Error "Unknown manifest schema version ${manifest.schemaVersion} !!"
     FinScript
 }
 
@@ -260,26 +267,26 @@ foreach( $blobName in $uniqueBlobs) {
 }
 $ProgressPreference = 'Continue'
 
-#now merge all tar files together
-#We are on windows then we can't use approach to decompress all layesrs to one folder
-#and then pack it again. By decompressing the tar we will lose linux files attributes.
-#Instead we have to use --concatenate tar command. But this is not implemented in 
-#native windows tar executable so the executable is packed together with the script
+# Now merge all tar files together
+# We are on windows then we can't use approach to decompress all layers to one folder
+# and then pack it again. By decompressing the tar we will lose linux files attributes.
+# Instead we have to use --concatenate tar command. But this is not implemented in 
+# native windows tar executable so the executable is packed together with the script
 $exepath = Join-Path -Path $PSScriptRoot -ChildPath 'img-pkg.exe'
 $finalTar=$tarList[0]
 for ($i=1; $i -lt $tarList.Length; $i++){
     $params = "--concatenate --file=$finalTar " + $tarList[$i] 
-    #we have to set working directory to grant work --concatenate correctly we have to be in tar files 
+    # we have to set working directory to grant work --concatenate correctly we have to be in tar files 
     Start-Process -FilePath $exepath -WorkingDirectory $workDir -Wait -NoNewWindow -ArgumentList $params
     $tarToDel = Join-Path -Path $workDir -ChildPath $tarList[$i]
     Remove-Item -Path $tarToDel
 }
-#rename the meged image to final name ->container name and version
+# Rename the meged image to final name ->container name and version
 $finalTar = Join-Path  -Path $workDir -ChildPath $finalTar
 $tarImgPath = Join-Path -Path $workDir -ChildPath $tarImgName
 Rename-Item -Path $finalTar -NewName $tarImgName
-#If we are here anf gzip file already exist, then -Force has been specified
-#Then remove original anf create new one
+# If we are here anf gzip file already exist, then -Force has been specified
+# Remove original and create new one
 if(Test-Path -Path $gzipImgPath -PathType Leaf){
     Remove-Item -Path $gzipImgPath
 }
@@ -293,7 +300,7 @@ if(Test-Path -Path $gzipImgPath -PathType Leaf){
     Write-Host ""
 
 }
-#remove tar
+# Remove tar
 Remove-Item -Path $tarImgPath
 
 
